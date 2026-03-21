@@ -1,4 +1,5 @@
 import type { ContainerRuntime } from "../runtime/container_runtime.ts";
+import { getCredential, CredentialError } from "../auth/mod.ts";
 
 export interface PreflightResult {
   ok: boolean;
@@ -33,14 +34,28 @@ export class PreflightChecker {
       );
     }
 
-    // Check API key
+    // Check authentication
     const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
     const envHasKey = options.envVars.some((e) =>
       e.startsWith("ANTHROPIC_API_KEY=")
     );
-    if (!apiKey && !envHasKey) {
+    const envHasOauth = options.envVars.some((e) =>
+      e.startsWith("CLAUDE_CODE_OAUTH_TOKEN=")
+    );
+
+    let hasOauthCredential = false;
+    if (!apiKey && !envHasKey && !envHasOauth) {
+      try {
+        await getCredential();
+        hasOauthCredential = true;
+      } catch {
+        hasOauthCredential = false;
+      }
+    }
+
+    if (!apiKey && !envHasKey && !envHasOauth && !hasOauthCredential) {
       errors.push(
-        "ANTHROPIC_API_KEY is not set. Set it via environment variable or --env ANTHROPIC_API_KEY=<key>.",
+        "No authentication found. Set ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, or log in with Claude Code.",
       );
     }
 

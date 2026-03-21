@@ -15,6 +15,19 @@ export { ResultExtractor, taskSlug } from "./result/mod.ts";
 export type { ExtractOptions, ExtractResult } from "./result/mod.ts";
 export { PreflightChecker } from "./preflight/mod.ts";
 export type { PreflightResult } from "./preflight/mod.ts";
+export {
+  CredentialError,
+  FileProvider,
+  getCredential,
+  isExpired,
+  KeychainProvider,
+  resolveProvider,
+} from "./auth/mod.ts";
+export type {
+  ClaudeOAuthCredential,
+  CredentialProvider,
+  CredentialStore,
+} from "./auth/mod.ts";
 export type {
   BuildImageOptions,
   CommitOptions,

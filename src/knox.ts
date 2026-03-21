@@ -4,6 +4,7 @@ import { ImageManager } from "./image/image_manager.ts";
 import { LoopExecutor } from "./loop/loop_executor.ts";
 import { ResultExtractor, taskSlug } from "./result/result_extractor.ts";
 import { PreflightChecker } from "./preflight/preflight_checker.ts";
+import { getCredential, CredentialError } from "./auth/mod.ts";
 import type { ContainerId } from "./types.ts";
 
 export interface KnoxOptions {
@@ -85,12 +86,27 @@ export class Knox {
     const image = await imageManager.ensureSetupImage(setup);
     console.error(`[knox] Image ready: ${image}`);
 
+    // Resolve authentication
+    console.error(`[knox] Resolving authentication...`);
+    const envVars = [...env];
+    const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+    try {
+      const credential = await getCredential();
+      envVars.push(`CLAUDE_CODE_OAUTH_TOKEN=${credential.accessToken}`);
+      console.error(`[knox] Using OAuth credential for authentication`);
+    } catch (e) {
+      if (e instanceof CredentialError) {
+        if (apiKey) {
+          envVars.push(`ANTHROPIC_API_KEY=${apiKey}`);
+          console.error(`[knox] Using ANTHROPIC_API_KEY for authentication`);
+        }
+      } else {
+        throw e;
+      }
+    }
+
     // Create air-gapped container
     console.error(`[knox] Creating container (network disabled)...`);
-    const envVars = [
-      ...env,
-      `ANTHROPIC_API_KEY=${Deno.env.get("ANTHROPIC_API_KEY") ?? ""}`,
-    ];
     let containerId: ContainerId | undefined;
 
     // Register signal handler for cleanup on interrupt

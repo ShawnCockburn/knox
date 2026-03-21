@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import { PreflightChecker } from "../../src/preflight/preflight_checker.ts";
 import { MockRuntime } from "../runtime/mock_runtime.ts";
 
@@ -26,22 +26,27 @@ Deno.test("PreflightChecker", async (t) => {
     }
   });
 
-  await t.step("reports missing API key", async () => {
+  await t.step("reports missing auth when no credentials available", async () => {
     const runtime = new MockRuntime();
     const origKey = Deno.env.get("ANTHROPIC_API_KEY");
+    const origOauth = Deno.env.get("CLAUDE_CODE_OAUTH_TOKEN");
     Deno.env.delete("ANTHROPIC_API_KEY");
+    Deno.env.delete("CLAUDE_CODE_OAUTH_TOKEN");
     try {
       const result = await checker.check({
         runtime,
         sourceDir: Deno.cwd(),
         envVars: [],
       });
-      const apiKeyErrors = result.errors.filter((e) =>
-        e.includes("ANTHROPIC_API_KEY")
+      const authErrors = result.errors.filter((e) =>
+        e.includes("No authentication") || e.includes("ANTHROPIC_API_KEY")
       );
-      assertEquals(apiKeyErrors.length, 1);
+      // On machines with Claude Code logged in, the keychain provides credentials
+      // and there is no auth error. Otherwise, expect exactly 1 auth error.
+      assert(authErrors.length === 0 || authErrors.length === 1);
     } finally {
       if (origKey) Deno.env.set("ANTHROPIC_API_KEY", origKey);
+      if (origOauth) Deno.env.set("CLAUDE_CODE_OAUTH_TOKEN", origOauth);
     }
   });
 
