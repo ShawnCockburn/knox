@@ -39,6 +39,37 @@ export class Knox {
     this.runtime = options.runtime ?? new DockerRuntime();
   }
 
+  private async resolveAllowedIPs(): Promise<string[]> {
+    const hosts = ["api.anthropic.com"];
+    const ips = new Set<string>();
+    for (const host of hosts) {
+      try {
+        const records = await Deno.resolveDns(host, "A");
+        for (const ip of records) ips.add(ip);
+      } catch {
+        // Fall back to a manual lookup via subprocess if Deno DNS fails
+        const cmd = new Deno.Command("dig", {
+          args: ["+short", host, "A"],
+          stdout: "piped",
+          stderr: "null",
+        });
+        const output = await cmd.output();
+        const lines = new TextDecoder().decode(output.stdout).trim().split(
+          "\n",
+        );
+        for (const line of lines) {
+          if (/^\d+\.\d+\.\d+\.\d+$/.test(line)) ips.add(line);
+        }
+      }
+    }
+    if (ips.size === 0) {
+      throw new Error(
+        "Failed to resolve Anthropic API IPs — cannot set up network restriction",
+      );
+    }
+    return [...ips];
+  }
+
   async run(): Promise<KnoxResult> {
     const {
       task,
@@ -105,8 +136,13 @@ export class Knox {
       }
     }
 
-    // Create air-gapped container
-    console.error(`[knox] Creating container (network disabled)...`);
+    // Resolve Anthropic API IPs for network restriction
+    console.error(`[knox] Resolving API endpoints...`);
+    const allowedIPs = await this.resolveAllowedIPs();
+    console.error(`[knox] Allowed IPs: ${allowedIPs.join(", ")}`);
+
+    // Create container with restricted network (API-only egress)
+    console.error(`[knox] Creating container (API-only network)...`);
     let containerId: ContainerId | undefined;
 
     // Register signal handler for cleanup on interrupt
@@ -127,7 +163,8 @@ export class Knox {
         image,
         workdir: "/workspace",
         env: envVars,
-        networkEnabled: false,
+        networkEnabled: true,
+        capAdd: ["NET_ADMIN"],
         cpuLimit,
         memoryLimit,
       });
@@ -136,6 +173,10 @@ export class Knox {
       // Copy source into container
       console.error(`[knox] Copying source into container...`);
       await this.runtime.copyIn(containerId, dir, "/workspace");
+
+      // Lock down network to API-only egress
+      await this.runtime.restrictNetwork(containerId, allowedIPs);
+      console.error(`[knox] Network restricted to API endpoints only`);
 
       // Initialize git inside container if needed, record initial commit
       await this.runtime.exec(containerId, [

@@ -100,6 +100,14 @@ export class MockRuntime implements ContainerRuntime {
     return Promise.resolve();
   }
 
+  restrictNetwork(
+    container: ContainerId,
+    allowedIPs: string[],
+  ): Promise<void> {
+    this.record("restrictNetwork", container, allowedIPs);
+    return Promise.resolve();
+  }
+
   commit(options: CommitOptions): Promise<ImageId> {
     this.record("commit", options);
     return Promise.resolve(options.tag);

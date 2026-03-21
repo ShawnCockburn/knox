@@ -20,6 +20,8 @@ export interface CreateContainerOptions {
   env?: string[];
   /** Whether network is enabled (default: true). */
   networkEnabled?: boolean;
+  /** Additional Linux capabilities (e.g., "NET_ADMIN"). */
+  capAdd?: string[];
   /** CPU limit (e.g., "2" for 2 cores). */
   cpuLimit?: string;
   /** Memory limit (e.g., "4g" for 4 GB). */

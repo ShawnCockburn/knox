@@ -52,6 +52,9 @@ export class DockerRuntime implements ContainerRuntime {
     if (options.networkEnabled === false) {
       args.push("--network", "none");
     }
+    for (const cap of options.capAdd ?? []) {
+      args.push("--cap-add", cap);
+    }
     if (options.cpuLimit) {
       args.push("--cpus", options.cpuLimit);
     }
@@ -126,6 +129,38 @@ export class DockerRuntime implements ContainerRuntime {
 
     const status = await child.status;
     return status.code;
+  }
+
+  async restrictNetwork(
+    container: ContainerId,
+    allowedIPs: string[],
+  ): Promise<void> {
+    // Build an iptables script that allows only:
+    // 1. Loopback traffic
+    // 2. DNS to Docker's embedded resolver (127.0.0.11)
+    // 3. HTTPS (port 443) to each allowed IP
+    // 4. Established/related return traffic
+    // 5. Drop everything else
+    const rules = [
+      "iptables -F OUTPUT",
+      "iptables -A OUTPUT -o lo -j ACCEPT",
+      "iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT",
+      "iptables -A OUTPUT -p udp -d 127.0.0.11 --dport 53 -j ACCEPT",
+      "iptables -A OUTPUT -p tcp -d 127.0.0.11 --dport 53 -j ACCEPT",
+      ...allowedIPs.map(
+        (ip) => `iptables -A OUTPUT -p tcp -d ${ip} --dport 443 -j ACCEPT`,
+      ),
+      "iptables -A OUTPUT -j DROP",
+    ];
+
+    const result = await this.exec(container, [
+      "sh",
+      "-c",
+      rules.join(" && "),
+    ]);
+    if (result.exitCode !== 0) {
+      throw new Error(`Failed to restrict network: ${result.stderr}`);
+    }
   }
 
   async copyIn(

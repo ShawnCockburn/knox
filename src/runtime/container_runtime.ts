@@ -67,6 +67,15 @@ export interface ContainerRuntime {
   /** Commit a container's filesystem as a new image. */
   commit(options: CommitOptions): Promise<ImageId>;
 
+  /**
+   * Restrict container egress to only the given IPs on port 443 (+ DNS).
+   * Requires the container to have NET_ADMIN capability and iptables installed.
+   */
+  restrictNetwork(
+    container: ContainerId,
+    allowedIPs: string[],
+  ): Promise<void>;
+
   /** Stop a running container. */
   stop(container: ContainerId): Promise<void>;
 
