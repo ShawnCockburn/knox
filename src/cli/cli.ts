@@ -1,5 +1,5 @@
 import { parseArgs } from "@std/cli";
-import { resolve } from "@std/path";
+import { basename, dirname, resolve } from "@std/path";
 import { Knox } from "../engine/knox.ts";
 import { formatSummary } from "./format.ts";
 import { log } from "../shared/log.ts";
@@ -8,12 +8,17 @@ import { ImageManager } from "../shared/image/image_manager.ts";
 import { DockerRuntime } from "../shared/runtime/docker_runtime.ts";
 import { resolveAuth } from "../shared/knox/resolve_auth.ts";
 import { resolveAllowedIPs } from "../shared/knox/resolve_network.ts";
+import { FileQueueSource } from "../queue/file_queue_source.ts";
+import {
+  Orchestrator,
+  OrchestratorValidationError,
+} from "../queue/orchestrator.ts";
 
 const USAGE = `Usage: knox <command> [options]
 
 Commands:
   run      Run a single task in a sandboxed container
-  queue    Run a queue of tasks (not yet implemented)
+  queue    Run a queue of tasks from a YAML manifest
 
 Run 'knox <command> --help' for command-specific usage.`;
 
@@ -68,15 +73,90 @@ if (effectiveCommand === "queue") {
   }
 
   // Validate file exists
+  const queueFilePath = resolve(flags.file as string);
   try {
-    await Deno.stat(flags.file);
+    await Deno.stat(queueFilePath);
   } catch {
-    console.error(`Error: queue file not found: ${flags.file}`);
+    console.error(`Error: queue file not found: ${queueFilePath}`);
     Deno.exit(2);
   }
 
-  console.error("knox queue is not yet implemented");
-  Deno.exit(0);
+  const runtime = new DockerRuntime();
+
+  try {
+    // 1. Load manifest to check for setup commands
+    const source = new FileQueueSource(queueFilePath);
+    const loadResult = await source.load();
+    if (!loadResult.ok) {
+      for (const err of loadResult.errors) {
+        log.error(err.message);
+      }
+      Deno.exit(2);
+    }
+    const manifest = loadResult.manifest;
+
+    // 2. Resolve shared resources once
+    log.info("Resolving shared resources...");
+
+    // Build/cache images (use setup from defaults if present)
+    const imageManager = new ImageManager(runtime);
+    const image = await imageManager.ensureSetupImage(
+      manifest.defaults?.setup,
+    );
+
+    // Resolve authentication
+    const resolvedEnvVars = await resolveAuth([]);
+
+    // Resolve Anthropic API IPs
+    const allowedIPs = await resolveAllowedIPs();
+
+    // 3. Derive log directory from queue file path
+    const queueName = basename(queueFilePath).replace(/\.ya?ml$/, "");
+    const logDir = resolve(dirname(queueFilePath), `${queueName}.logs`);
+
+    // 4. Wire SIGINT to AbortController
+    const controller = new AbortController();
+    Deno.addSignalListener("SIGINT", () => {
+      log.info(`\nInterrupted. Aborting queue...`);
+      controller.abort();
+    });
+
+    // 5. Run orchestrator
+    const orchestrator = new Orchestrator({
+      source,
+      image,
+      envVars: resolvedEnvVars,
+      allowedIPs,
+      dir: resolve("."),
+      logDir,
+      signal: controller.signal,
+      resume: flags.resume as boolean,
+      verbose: flags.verbose as boolean,
+      runtime,
+      onLine: flags.verbose
+        ? (itemId, line) => console.error(`[${itemId}] ${line}`)
+        : undefined,
+    });
+
+    const report = await orchestrator.run();
+
+    // 6. Print JSON report to stdout
+    console.log(JSON.stringify(report, null, 2));
+
+    // 7. Exit code
+    const allCompleted = report.items.every((i) => i.status === "completed");
+    Deno.exit(allCompleted ? 0 : 1);
+  } catch (e) {
+    if (e instanceof OrchestratorValidationError) {
+      for (const err of e.errors) {
+        log.error(err.message);
+      }
+      Deno.exit(2);
+    }
+    const msg = e instanceof Error ? e.message : String(e);
+    log.error(`Fatal: ${msg}`);
+    Deno.exit(3);
+  }
 } else if (effectiveCommand === "run" || effectiveCommand === null) {
   // "knox run" or legacy "knox --task ..."
   if (effectiveCommand === null && !subcommand) {

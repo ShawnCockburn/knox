@@ -19,7 +19,8 @@
     "@std/cli": "jsr:@std/cli@1",
     "@std/crypto": "jsr:@std/crypto@1",
     "@std/encoding": "jsr:@std/encoding@1",
-    "@std/streams": "jsr:@std/streams@1"
+    "@std/streams": "jsr:@std/streams@1",
+    "@std/yaml": "jsr:@std/yaml@1"
   },
   "compilerOptions": {
     "strict": true

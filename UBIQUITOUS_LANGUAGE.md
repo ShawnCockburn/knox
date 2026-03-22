@@ -24,37 +24,37 @@
 
 ## Run Identity
 
-| Term                    | Definition                                                                                                                                      | Aliases to avoid      |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
-| **Run ID** (new)        | An 8-hex-character identifier generated at the start of each Knox run, used to correlate Container, branch, temp directory, and result metadata | Job ID, session ID    |
-| **Run Directory** (new) | The temporary directory `/tmp/knox-<Run ID>/` that holds all artifacts for a single run                                                         | Temp dir, working dir |
+| Term              | Definition                                                                                                                                      | Aliases to avoid      |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| **Run ID**        | An 8-hex-character identifier generated at the start of each Knox engine run, used to correlate Container, branch, temp directory, and result metadata | Job ID, session ID    |
+| **Run Directory** | The temporary directory `/tmp/knox-<Run ID>/` that holds all artifacts for a single run                                                         | Temp dir, working dir |
 
 ## Source & Sink
 
-| Term                      | Definition                                                                                                                      | Aliases to avoid                            |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| **Source Provider** (new) | Container-agnostic interface that prepares source material on the host for injection into a Container                           | Input strategy, source strategy             |
-| **Source Metadata** (new) | A discriminated union describing how source was prepared, keyed on Source Strategy (e.g., base commit, repo path)               | Source info, source context                 |
-| **Source Strategy** (new) | An enum member identifying which Source Provider produced the Source Metadata (MVP: `HostGit`)                                  | Source type                                 |
-| **Result Sink** (new)     | Container-agnostic interface that receives a Git Bundle and produces a SinkResult                                               | Output strategy, result strategy, extractor |
-| **Sink Result** (new)     | A discriminated union describing the outcome of a Result Sink, keyed on Sink Strategy (e.g., branch name for HostGit)           | Extract result, output result               |
-| **Sink Strategy** (new)   | An enum member identifying which Result Sink produced the Sink Result (MVP: `HostGit`; future: `RemoteGit`, `Filesystem`, `PR`) | Sink type, output type                      |
+| Term                | Definition                                                                                                                      | Aliases to avoid                            |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| **Source Provider**  | Container-agnostic interface that prepares source material on the host for injection into a Container                           | Input strategy, source strategy             |
+| **Source Metadata**  | A discriminated union describing how source was prepared, keyed on Source Strategy (e.g., base commit, repo path)               | Source info, source context                 |
+| **Source Strategy**  | An enum member identifying which Source Provider produced the Source Metadata (MVP: `HostGit`)                                  | Source type                                 |
+| **Result Sink**      | Container-agnostic interface that receives a Git Bundle and produces a Sink Result                                              | Output strategy, result strategy, extractor |
+| **Sink Result**      | A discriminated union describing the outcome of a Result Sink, keyed on Sink Strategy (e.g., branch name for HostGit)           | Extract result, output result               |
+| **Sink Strategy**    | An enum member identifying which Result Sink produced the Sink Result (MVP: `HostGit`; future: `RemoteGit`, `Filesystem`, `PR`) | Sink type, output type                      |
 
 ## Transfer Mechanism
 
-| Term                        | Definition                                                                                                                                    | Aliases to avoid                                                                   |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| **Git Bundle** (new)        | A portable file containing git objects, created inside the Container and fetched on the host to create a Result Branch                        | Patch file, format-patch, archive                                                  |
-| **Base Commit** (new)       | The host repo's HEAD SHA at the time Source Provider snapshots the code; the anchor point for the Result Branch                               | Initial commit (overloaded — was previously used for the container's first commit) |
-| **Shallow Clone** (new)     | A `git clone --depth 1` of the host repo used to prepare source; ensures the Agent sees only committed state at HEAD with no history          | Snapshot, archive, export                                                          |
-| **Result Branch** (updated) | A git branch named `knox/<Task Slug>-<Run ID>` on the host repo containing the Agent's commits, created without switching the host's checkout | Output branch                                                                      |
+| Term                    | Definition                                                                                                                                    | Aliases to avoid                                                                   |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| **Git Bundle**          | A portable file containing git objects, created inside the Container and fetched on the host to create a Result Branch                        | Patch file, format-patch, archive                                                  |
+| **Base Commit**         | The host repo's HEAD SHA at the time Source Provider snapshots the code; the anchor point for the Result Branch                               | Initial commit (overloaded — was previously used for the container's first commit) |
+| **Shallow Clone**       | A `git clone --depth 1` of the host repo used to prepare source; ensures the Agent sees only committed state at HEAD with no history          | Snapshot, archive, export                                                          |
+| **Result Branch** (updated) | A git branch on the host repo containing the Agent's commits, created without switching the host's checkout; named `knox/<Task Slug>-<Run ID>` for single runs, or **Group Branch** for grouped Queue Items | Output branch                                                                      |
 
 ## Commit Recovery
 
-| Term                      | Definition                                                                                                                                                            | Aliases to avoid               |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| **Commit Nudge** (new)    | A lightweight, single-purpose Claude invocation that instructs the Agent to review its diff and commit with a meaningful message, without making further code changes | Commit reminder, commit retry  |
-| **Auto-Commit** (updated) | A mechanical `git add -A && git commit` performed by Knox as a last resort when the Agent fails to commit after a Commit Nudge                                        | Fallback commit, safety commit |
+| Term              | Definition                                                                                                                                                            | Aliases to avoid               |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| **Commit Nudge**  | A lightweight, single-purpose Claude invocation that instructs the Agent to review its diff and commit with a meaningful message, without making further code changes | Commit reminder, commit retry  |
+| **Auto-Commit**   | A mechanical `git add -A && git commit` performed by Knox as a last resort when the Agent fails to commit after a Commit Nudge                                        | Fallback commit, safety commit |
 
 ## Two-Phase Execution
 
@@ -79,21 +79,48 @@
 | **Check Command** | An optional user-provided command (e.g., `npm test`) run after the Agent signals completion   | Verification command, test command    |
 | **Check Failure** | When the Check Command exits non-zero, indicating the Agent's Completion Signal was premature | False completion, failed verification |
 
-## Orchestration
+## Single-Run Orchestration
 
 | Term                            | Definition                                                                                                                    | Aliases to avoid                                 |
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| **Knox**                        | The top-level orchestrator that coordinates preflight, source provision, Agent execution, commit recovery, and result sinking | Runner, executor (when meaning the whole system) |
+| **Knox** (updated)              | The single-run engine that coordinates a Container Session, Agent Runner, bundle extraction, and result sinking for one Task | Runner, executor (when meaning the whole system) |
+| **Knox Outcome**                | A discriminated union result from a Knox engine run: `{ ok: true, result }` or `{ ok: false, error, phase }`                 | Result (ambiguous with KnoxResult)               |
 | **Preflight Check**             | A validation run before execution: Docker available, Credentials present, source directory exists, dirty working tree warning | Pre-check, startup validation                    |
-| **Container Session** (new)     | A deep module that owns the entire lifecycle of a sandboxed Container: creation, workspace setup, command execution, result extraction, and cleanup | Session, sandbox context                         |
-| **Agent Runner** (new)          | A deep module that owns Agent execution as a coherent operation: running Loops, detecting the Completion Signal, verifying Check Commands, and performing Commit Nudge with Auto-Commit fallback | Loop executor, agent loop                        |
+| **Container Session**           | A deep module that owns the entire lifecycle of a sandboxed Container: creation, workspace setup, command execution, result extraction, and cleanup | Session, sandbox context                         |
+| **Agent Runner**                | A deep module that owns Agent execution as a coherent operation: running Loops, detecting the Completion Signal, verifying Check Commands, and performing Commit Nudge with Auto-Commit fallback | Loop executor, agent loop                        |
 | **Image Manager**               | The module that builds the base Image and caches Setup Images                                                                 | Builder, image builder                           |
 | ~~**Loop Executor**~~ (removed) | Absorbed into **Agent Runner**, which owns both loop management and commit recovery as a single responsibility               | —                                                |
 
+## Queue Orchestration (new)
+
+| Term | Definition | Aliases to avoid |
+| ---- | ---------- | ---------------- |
+| **Queue** (new) | A YAML manifest describing multiple Tasks to be executed, with optional dependencies, groups, concurrency, and defaults | Batch, job list, task list |
+| **Queue Item** (new) | A single entry in a Queue, consisting of an `id`, a `task` description, and optional overrides for model, setup, check, env, etc. | Task (when referring to the queue entry rather than the work description), job |
+| **Queue Defaults** (new) | Queue-level configuration values (model, maxLoops, env, etc.) that merge with per-item overrides; item values take precedence | Global config, base config |
+| **Queue Source** (new) | Interface for loading a Queue and persisting Queue State; the data layer for the Orchestrator | Queue loader, queue provider |
+| **File Queue Source** (new) | YAML-file-backed implementation of Queue Source; reads from `<name>.yaml`, writes state to `<name>.state.yaml` | YAML loader |
+| **Queue State** (new) | A persistent record of a Queue Run's progress, stored in a `.state.yaml` file alongside the Queue file | State file (ambiguous with Progress File), checkpoint |
+| **Item Status** (new) | The lifecycle state of a Queue Item: `pending`, `in_progress`, `completed`, `failed`, or `blocked` | Status, state (too generic) |
+| **Queue Run ID** (new) | An 8-hex-character identifier for an entire Queue execution, distinct from per-item Run IDs | Run ID (ambiguous — see flagged ambiguities) |
+| **Orchestrator** (new) | The component that loads a Queue, schedules Queue Items via the DAG Scheduler, invokes Knox for each item, tracks Queue State, and produces a Queue Report | Queue runner, batch runner, scheduler (the scheduler is a part of the Orchestrator, not the whole) |
+| **DAG** (new) | The directed acyclic graph of dependencies formed by `dependsOn` declarations between Queue Items | Dependency tree (inaccurate — it's a graph, not a tree), dep graph |
+| **Ready Item** (new) | A Queue Item whose status is `pending` and whose dependencies have all reached `completed` status | Runnable item, eligible item |
+| **Blocked** (new) | An Item Status meaning the item cannot run because a direct or transitive dependency has `failed` | Skipped (inaccurate — skipped implies intentional), cancelled |
+| **Group** (new) | A named set of Queue Items that form a linear chain producing a single branch with stacked commits | Chain, pipeline, sequence |
+| **Group Branch** (new) | The shared Result Branch for all items in a Group, named `knox/<group>-<Queue Run ID>` | Shared branch, chain branch |
+| **Chained Execution** (new) | The mechanism where each subsequent item in a Group clones from the Group Branch (its predecessor's output) via Source Provider `ref` parameter | Stacking, sequential build |
+| **Concurrency** (new) | The maximum number of Queue Items that may run simultaneously, configured at the Queue level (default: 1) | Parallelism, workers, pool size |
+| **Resume** (new) | Re-running an Orchestrator from an existing Queue State: `completed` items are skipped, `failed` and `blocked` items are reset to `pending` | Retry (ambiguous with transient error retry), restart |
+| **Queue Report** (new) | The final JSON output of an Orchestrator run, printed to stdout, containing all item statuses, branches, durations, and outcomes | Summary (ambiguous with stderr summary), results |
+| **Item Log** (new) | A per-item text file capturing all Agent output, written to `<queue-name>.logs/<item-id>.log` regardless of verbosity | Log file (too generic) |
+| **Validation Error** (new) | A structural, referential, cycle, or group-linearity error detected at Queue load time; all errors are collected before reporting | Parse error (too narrow) |
+
 ## Relationships
 
-- A **Knox** run generates exactly one **Run ID** and one **Run Directory**
-- A **Knox** run creates exactly one **Container Session**, which owns one
+- A **Knox** engine run generates exactly one **Run ID** and one **Run
+  Directory**
+- A **Knox** engine run creates exactly one **Container Session**, which owns one
   **Container** named `knox-<Run ID>`
 - A **Source Provider** prepares source material into the **Run Directory**,
   producing **Source Metadata** with a **Base Commit**
@@ -125,42 +152,62 @@
 - A **Setup Command** produces a **Setup Image** cached by its SHA256 hash
 - **Egress Filtering** is applied to the **Container** before the first **Loop**
   begins
+- An **Orchestrator** loads a **Queue** via a **Queue Source** and produces a
+  **Queue Report** (new)
+- An **Orchestrator** generates exactly one **Queue Run ID** per execution (new)
+- Each **Queue Item** produces one **Knox** engine run with its own **Run ID**
+  (new)
+- **Queue Defaults** merge with per-item overrides; item values take precedence
+  (new)
+- The **DAG** is validated at load time: cycles, dangling references, and
+  group diamonds are rejected as **Validation Errors** (new)
+- A **Ready Item** is picked by the scheduler when a **Concurrency** slot is
+  available (new)
+- A `failed` **Queue Item** transitively marks all downstream dependents as
+  **Blocked**, with `blockedBy` recording the failed item's ID (new)
+- All items in a **Group** share a single **Group Branch**; commits stack in
+  dependency order via **Chained Execution** (new)
+- The first item in a **Group** clones from HEAD; subsequent items clone from the
+  **Group Branch** via `GitSourceProvider({ ref })` (new)
+- **Resume** preserves the **Queue Run ID** and **Queue State**; only
+  non-`completed` items are re-evaluated (new)
+- **Item Logs** are written regardless of verbosity; the `--verbose` flag
+  controls whether Agent output also appears on stderr (new)
+- **Queue State** is updated on every **Item Status** transition, so it reflects
+  current progress even if the Orchestrator crashes (new)
 
 ## Example dialogue
 
-> **Dev:** "When I kick off a Knox run, what actually gets copied into the
-> Container?"
-> **Domain expert:** "Only committed state. The **Source Provider** does a
-> **Shallow Clone** — `git clone --depth 1` — so the Agent sees the tree at HEAD
-> but no history. If you have uncommitted changes, Preflight warns you but
-> proceeds."
+> **Dev:** "How does queue mode differ from a single `knox run`?"
+> **Domain expert:** "A single `knox run` invokes **Knox** once — one **Task**,
+> one **Container**, one **Result Branch**. Queue mode loads a **Queue** manifest
+> and runs an **Orchestrator** that schedules multiple **Queue Items** against the
+> same engine. Shared resources — **Image**, **Credentials**, **Allowed IPs** —
+> are resolved once for the whole queue."
 >
-> **Dev:** "Who manages all the container setup — copying files, permissions,
-> network lockdown?"
-> **Domain expert:** "The **Container Session**. It's a deep module — you call
-> `ContainerSession.create()` and it handles everything: creates the Container,
-> copies source in, fixes ownership, restricts network to API-only egress,
-> verifies `.git` exists, sets up excludes. Knox never touches those details."
+> **Dev:** "What happens when a Queue Item fails?"
+> **Domain expert:** "The **Orchestrator** marks it `failed` and walks the **DAG**
+> to transitively mark all downstream dependents as **Blocked**. Independent items
+> keep running. So in a diamond — A feeds B and C, both feed D — if B fails, D is
+> **Blocked** but C still runs."
 >
-> **Dev:** "What if the Agent finishes but forgets to commit?"
-> **Domain expert:** "That's the **Agent Runner**'s job. After the loops finish,
-> it asks the **Container Session** `hasDirtyTree()`. If dirty, it runs a
-> **Commit Nudge** — a narrow Claude invocation that just reviews the diff and
-> writes a commit message. If the nudge fails, it does an **Auto-Commit**
-> mechanically. Knox doesn't know any of that — it just gets back `completed`,
-> `loopsRun`, and `autoCommitted`."
+> **Dev:** "What about groups? I see items with the same `group` field."
+> **Domain expert:** "A **Group** is a linear chain. All items share one **Group
+> Branch** named `knox/<group>-<Queue Run ID>`. The first item clones from HEAD.
+> Each subsequent item uses **Chained Execution** — it clones from the **Group
+> Branch**, so it sees its predecessor's commits. The **Result Sink** stacks
+> commits onto the same branch."
 >
-> **Dev:** "And how does the work get back to my repo?"
-> **Domain expert:** "Knox calls `session.extractBundle()` — the **Container
-> Session** creates a **Git Bundle** inside the Container and copies it to the
-> **Run Directory**. Then the **Result Sink** fetches it into your repo as a
-> **Result Branch** — `knox/<slug>-<Run ID>`. Your checkout doesn't change."
+> **Dev:** "Can I resume a partially-completed queue?"
+> **Domain expert:** "Yes. `--resume` reads the existing **Queue State** file.
+> `completed` items are skipped. `failed` and **Blocked** items are reset to
+> `pending`. The **Queue Run ID** is preserved so **Group Branches** from the
+> previous run are continued, not recreated."
 >
-> **Dev:** "So Knox itself is pretty thin now?"
-> **Domain expert:** "About 50 lines. It resolves auth, resolves allowed IPs,
-> creates a **Container Session**, hands it to the **Agent Runner**, then calls
-> `extractBundle()` and the **Result Sink**. Everything else is hidden inside the
-> two deep modules."
+> **Dev:** "Where do I find what happened?"
+> **Domain expert:** "Three places. Lifecycle events go to stderr always. Each
+> item's Agent output goes to an **Item Log** in `<queue>.logs/<id>.log`. The
+> **Queue Report** — full JSON with all outcomes — goes to stdout."
 
 ## Flagged ambiguities
 
@@ -180,23 +227,45 @@
   Loops), while a **Check Failure** causes the _next Loop_ (which _is_ counted).
   Distinguish between "retry" (transient error recovery) and "re-loop after
   Check Failure" (deliberate continuation).
-- **"initial commit"** (flagged, new) was previously used to mean the first
-  commit inside the Container. This is now **Base Commit** — the host repo's
-  HEAD SHA at snapshot time. Avoid "initial commit" as it conflates the host's
-  history with the Container's.
-- **"extractor" / "Result Extractor"** (flagged, new) is the old module name.
-  The concept has been split into **Git Bundle** (transfer mechanism) and
-  **Result Sink** (output strategy). Avoid "extractor" — use **Result Sink** for
-  the module and **Git Bundle** for the mechanism.
-- **"fallback copy"** (flagged, new) referred to dumping the Container workspace
-  into the host project directory. This mechanism is removed. Do not use this
-  term — if the **Git Bundle** fetch fails, it is an error, not a fallback.
-- **"loop executor"** (flagged, new) is the old module name. The concept has
-  been absorbed into **Agent Runner**, which owns both loop management and commit
-  recovery as a single coherent responsibility. Avoid "loop executor" — use
-  **Agent Runner**. The old alias warning ("Agent runner" as alias to avoid) is
-  now inverted: **Agent Runner** is the canonical term.
-- **"session" vs "container"** (flagged, new): A **Container** is the Docker
-  environment. A **Container Session** is the Knox module that manages a
-  Container's lifecycle. Do not use "session" alone — always say **Container
-  Session** to avoid confusion with HTTP sessions or user sessions.
+- **"initial commit"** was previously used to mean the first commit inside the
+  Container. This is now **Base Commit** — the host repo's HEAD SHA at snapshot
+  time. Avoid "initial commit" as it conflates the host's history with the
+  Container's.
+- **"extractor" / "Result Extractor"** is the old module name. The concept has
+  been split into **Git Bundle** (transfer mechanism) and **Result Sink** (output
+  strategy). Avoid "extractor" — use **Result Sink** for the module and **Git
+  Bundle** for the mechanism.
+- **"fallback copy"** referred to dumping the Container workspace into the host
+  project directory. This mechanism is removed. Do not use this term — if the
+  **Git Bundle** fetch fails, it is an error, not a fallback.
+- **"loop executor"** is the old module name. The concept has been absorbed into
+  **Agent Runner**, which owns both loop management and commit recovery as a
+  single coherent responsibility. Avoid "loop executor" — use **Agent Runner**.
+- **"session" vs "container"**: A **Container** is the Docker environment. A
+  **Container Session** is the Knox module that manages a Container's lifecycle.
+  Do not use "session" alone — always say **Container Session** to avoid
+  confusion with HTTP sessions or user sessions.
+- **"Run ID"** (flagged, new) now has two scopes: the per-engine **Run ID**
+  (8-hex, one per Knox invocation) and the per-queue **Queue Run ID** (8-hex,
+  one per Orchestrator execution). Always qualify: "Run ID" for engine scope,
+  "Queue Run ID" for queue scope. Never use "Run ID" unqualified when both
+  scopes are in play.
+- **"state file"** (flagged, new) can mean the **Queue State** file
+  (`<name>.state.yaml`) or the **Progress File** (`knox-progress.txt` inside
+  the Container). These are completely different: Queue State tracks item
+  statuses across the queue; Progress File carries Agent context across Loops
+  within a single Container. Always use the full term.
+- **"source"** (flagged, new) is used for both **Queue Source** (the data layer
+  that loads queue YAML) and **Source Provider** (the git cloning mechanism).
+  These are unrelated interfaces at different layers. Always use the full term
+  to disambiguate.
+- **"branch"** (flagged, new) can mean a **Result Branch** (per-item, named
+  `knox/<slug>-<runId>`) or a **Group Branch** (per-group, named
+  `knox/<group>-<queueRunId>`). In queue contexts, always specify which.
+  Ungrouped Queue Items produce **Result Branches**; grouped items produce
+  **Group Branches**.
+- **"blocked"** (flagged, new) has a specific meaning: a Queue Item that cannot
+  run because a dependency failed. Do not use "blocked" for items waiting on
+  non-failed dependencies — those are simply `pending` with unsatisfied deps.
+  Also do not confuse with abort-blocked items (whose `blockedBy` is `"aborted"`
+  rather than an item ID).

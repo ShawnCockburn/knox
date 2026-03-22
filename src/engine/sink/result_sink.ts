@@ -23,6 +23,8 @@ export interface CollectOptions {
   readonly metadata: SourceMetadata;
   readonly taskSlug: string;
   readonly autoCommitted: boolean;
+  /** Override the computed branch name (used by queue orchestrator for groups). */
+  readonly branchName?: string;
 }
 
 /**

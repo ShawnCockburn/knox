@@ -23,8 +23,8 @@ export class GitBranchSink implements ResultSink {
       throw new Error(`Bundle file not found: ${bundlePath}`);
     }
 
-    // Compute branch name
-    const branchName = `knox/${taskSlug}-${runId}`;
+    // Use override or compute branch name
+    const branchName = options.branchName ?? `knox/${taskSlug}-${runId}`;
 
     // Fetch bundle into host repo as a new branch (no checkout switch)
     await this.gitRun([

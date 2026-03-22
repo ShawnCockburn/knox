@@ -35,6 +35,8 @@ export interface KnoxEngineOptions {
   runtime?: ContainerRuntime;
   sourceProvider?: SourceProvider;
   resultSink?: ResultSink;
+  /** Override branch name in sink (used by queue orchestrator for groups). */
+  branchName?: string;
 }
 
 export interface KnoxResult {
@@ -124,7 +126,7 @@ export class Knox {
           runId,
           completed: false,
           aborted: true,
-          loopsRun: (partial.loopsRun ?? 0),
+          loopsRun: partial.loopsRun ?? 0,
           maxLoops,
           startedAt,
           finishedAt,
@@ -133,7 +135,13 @@ export class Knox {
           task,
           autoCommitted: partial.autoCommitted ?? false,
           checkPassed: null,
-          sink: partial.sink ?? { strategy: SinkStrategy.HostGit, branchName: "", commitCount: 0, autoCommitted: false },
+          sink: partial.sink ??
+            {
+              strategy: SinkStrategy.HostGit,
+              branchName: "",
+              commitCount: 0,
+              autoCommitted: false,
+            },
         },
       };
     };
@@ -233,6 +241,7 @@ export class Knox {
           metadata: session.metadata,
           taskSlug: slug,
           autoCommitted: agentResult.autoCommitted,
+          branchName: this.options.branchName,
         });
         await resultSink.cleanup(runId);
       } catch (e) {

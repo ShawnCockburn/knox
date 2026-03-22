@@ -7,7 +7,8 @@
     "jsr:@std/encoding@1": "1.0.10",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "jsr:@std/path@1": "1.1.4",
-    "jsr:@std/streams@1": "1.0.17"
+    "jsr:@std/streams@1": "1.0.17",
+    "jsr:@std/yaml@1": "1.0.12"
   },
   "jsr": {
     "@std/assert@1.0.19": {
@@ -42,6 +43,9 @@
       "dependencies": [
         "jsr:@std/bytes"
       ]
+    },
+    "@std/yaml@1.0.12": {
+      "integrity": "7deabca4545bcedd07c5f69ea53acea71b8b4c67562f224e17b90d75944cb20c"
     }
   },
   "workspace": {
@@ -52,7 +56,8 @@
       "jsr:@std/encoding@1",
       "jsr:@std/fs@1",
       "jsr:@std/path@1",
-      "jsr:@std/streams@1"
+      "jsr:@std/streams@1",
+      "jsr:@std/yaml@1"
     ]
   }
 }
