@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { GitSourceProvider } from "../../src/source/git_source_provider.ts";
-import { SourceStrategy } from "../../src/source/source_provider.ts";
+import { GitSourceProvider } from "../../src/engine/source/git_source_provider.ts";
+import { SourceStrategy } from "../../src/engine/source/source_provider.ts";
 
 /** Create a temp git repo with an initial commit. Returns the repo path. */
 async function createTempRepo(): Promise<string> {

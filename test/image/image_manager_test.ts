@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { MockRuntime } from "../runtime/mock_runtime.ts";
-import { ImageManager } from "../../src/image/image_manager.ts";
+import { ImageManager } from "../../src/shared/image/image_manager.ts";
 
 Deno.test("ImageManager", async (t) => {
   await t.step("ensureBaseImage builds on first run", async () => {

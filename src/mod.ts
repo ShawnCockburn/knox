@@ -1,20 +1,37 @@
-export { Knox } from "./knox.ts";
-export type { KnoxOptions, KnoxResult } from "./knox.ts";
+// Engine
+export { Knox } from "./engine/mod.ts";
+export type { KnoxEngineOptions, KnoxOutcome, KnoxResult } from "./engine/mod.ts";
+export { AgentRunner } from "./engine/mod.ts";
+export type { AgentRunnerOptions, AgentRunnerResult } from "./engine/mod.ts";
+export { ContainerSession } from "./engine/mod.ts";
+export type { ContainerSessionOptions } from "./engine/mod.ts";
+export { PromptBuilder } from "./engine/mod.ts";
+export type { PromptContext } from "./engine/mod.ts";
+export type {
+  HostGitSourceMetadata,
+  PrepareResult,
+  SourceMetadata,
+  SourceProvider,
+} from "./engine/mod.ts";
+export { GitSourceProvider, SourceStrategy } from "./engine/mod.ts";
+export type {
+  CollectOptions,
+  HostGitSinkResult,
+  ResultSink,
+  SinkResult,
+} from "./engine/mod.ts";
+export { GitBranchSink, SinkStrategy } from "./engine/mod.ts";
+
+// Shared
 export type {
   ContainerRuntime,
   ExecOptions,
   OnLineCallback,
-} from "./runtime/mod.ts";
-export { DockerRuntime } from "./runtime/mod.ts";
-export { ImageManager } from "./image/mod.ts";
-export { AgentRunner } from "./agent/mod.ts";
-export type { AgentRunnerOptions, AgentRunnerResult } from "./agent/mod.ts";
-export { ContainerSession } from "./session/mod.ts";
-export type { ContainerSessionOptions } from "./session/mod.ts";
-export { PromptBuilder } from "./prompt/mod.ts";
-export type { PromptContext } from "./prompt/mod.ts";
-export { PreflightChecker } from "./preflight/mod.ts";
-export type { PreflightResult } from "./preflight/mod.ts";
+} from "./shared/mod.ts";
+export { DockerRuntime } from "./shared/mod.ts";
+export { ImageManager } from "./shared/mod.ts";
+export { PreflightChecker } from "./shared/mod.ts";
+export type { PreflightResult } from "./shared/mod.ts";
 export {
   CredentialError,
   FileProvider,
@@ -22,41 +39,23 @@ export {
   isExpired,
   KeychainProvider,
   resolveProvider,
-} from "./auth/mod.ts";
+} from "./shared/mod.ts";
 export type {
   ClaudeOAuthCredential,
   CredentialProvider,
   CredentialStore,
-} from "./auth/mod.ts";
+} from "./shared/mod.ts";
 export type {
   BuildImageOptions,
   CommitOptions,
   ContainerId,
   CreateContainerOptions,
   ExecResult,
+  FailurePhase,
   ImageId,
+  KnoxEvent,
   RunId,
-} from "./types.ts";
-export { generateRunId, taskSlug } from "./types.ts";
-
-// Pre-container functions
-export { resolveAuth } from "./knox/mod.ts";
-export { resolveAllowedIPs } from "./knox/mod.ts";
-
-// Source provider
-export type {
-  HostGitSourceMetadata,
-  PrepareResult,
-  SourceMetadata,
-  SourceProvider,
-} from "./source/mod.ts";
-export { GitSourceProvider, SourceStrategy } from "./source/mod.ts";
-
-// Result sink
-export type {
-  CollectOptions,
-  HostGitSinkResult,
-  ResultSink,
-  SinkResult,
-} from "./sink/mod.ts";
-export { GitBranchSink, SinkStrategy } from "./sink/mod.ts";
+} from "./shared/mod.ts";
+export { generateRunId, taskSlug } from "./shared/mod.ts";
+export { resolveAuth } from "./shared/mod.ts";
+export { resolveAllowedIPs } from "./shared/mod.ts";

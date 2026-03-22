@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import { DockerRuntime } from "../../src/runtime/docker_runtime.ts";
+import { DockerRuntime } from "../../src/shared/runtime/docker_runtime.ts";
 
 const runtime = new DockerRuntime();
 

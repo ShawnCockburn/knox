@@ -1,11 +1,13 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import { formatDuration, formatSummary } from "../../src/cli/format.ts";
-import { SinkStrategy } from "../../src/sink/result_sink.ts";
-import type { KnoxResult } from "../../src/knox.ts";
+import { SinkStrategy } from "../../src/engine/sink/result_sink.ts";
+import type { KnoxResult } from "../../src/engine/knox.ts";
 
 function makeResult(overrides: Partial<KnoxResult> = {}): KnoxResult {
   return {
+    runId: "a3f2b1c0",
     completed: true,
+    aborted: false,
     loopsRun: 3,
     maxLoops: 10,
     startedAt: "2026-03-22T10:00:00.000Z",

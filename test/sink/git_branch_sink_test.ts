@@ -1,8 +1,8 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { GitBranchSink } from "../../src/sink/git_branch_sink.ts";
-import { SourceStrategy } from "../../src/source/source_provider.ts";
-import { SinkStrategy } from "../../src/sink/result_sink.ts";
-import type { SourceMetadata } from "../../src/source/source_provider.ts";
+import { GitBranchSink } from "../../src/engine/sink/git_branch_sink.ts";
+import { SourceStrategy } from "../../src/engine/source/source_provider.ts";
+import { SinkStrategy } from "../../src/engine/sink/result_sink.ts";
+import type { SourceMetadata } from "../../src/engine/source/source_provider.ts";
 
 async function git(cwd: string, args: string[]): Promise<string> {
   const cmd = new Deno.Command("git", {

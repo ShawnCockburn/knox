@@ -1,6 +1,6 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import { PromptBuilder } from "../../src/prompt/prompt_builder.ts";
-import { DEFAULT_PROMPT } from "../../src/prompt/default_prompt.ts";
+import { PromptBuilder } from "../../src/engine/prompt/prompt_builder.ts";
+import { DEFAULT_PROMPT } from "../../src/engine/prompt/default_prompt.ts";
 
 const builder = new PromptBuilder();
 

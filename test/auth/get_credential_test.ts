@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { getCredential } from "../../src/auth/mod.ts";
+import { getCredential } from "../../src/shared/auth/mod.ts";
 
 Deno.test("getCredential", async (t) => {
   await t.step(

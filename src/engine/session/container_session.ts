@@ -1,8 +1,8 @@
-import type { ContainerRuntime, ExecOptions, OnLineCallback } from "../runtime/container_runtime.ts";
-import type { ContainerId, ExecResult, ImageId } from "../types.ts";
+import type { ContainerRuntime, ExecOptions, OnLineCallback } from "../../shared/runtime/container_runtime.ts";
+import type { ContainerId, ExecResult, ImageId } from "../../shared/types.ts";
 import type { SourceProvider } from "../source/source_provider.ts";
 import type { SourceMetadata } from "../source/source_provider.ts";
-import { log } from "../log.ts";
+import { log } from "../../shared/log.ts";
 
 /** Container-internal path constants. Only ContainerSession knows these. */
 const WORKSPACE = "/workspace";

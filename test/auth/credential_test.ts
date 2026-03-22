@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { CredentialError, isExpired } from "../../src/auth/mod.ts";
+import { CredentialError, isExpired } from "../../src/shared/auth/mod.ts";
 
 Deno.test("CredentialError", async (t) => {
   await t.step("has correct name and message", () => {

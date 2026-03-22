@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "@std/assert";
-import { resolveAuth } from "../../src/knox/resolve_auth.ts";
+import { resolveAuth } from "../../src/shared/knox/resolve_auth.ts";
 
 Deno.test("resolveAuth", async (t) => {
   await t.step("uses OAuth credential when env token is set", async () => {

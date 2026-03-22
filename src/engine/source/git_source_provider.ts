@@ -13,7 +13,10 @@ const TMP_BASE = "/tmp";
  * (which may contain reverted secrets) never reaches the agent.
  */
 export class GitSourceProvider implements SourceProvider {
-  constructor(private readonly repoPath: string) {}
+  constructor(
+    private readonly repoPath: string,
+    private readonly ref?: string,
+  ) {}
 
   async prepare(runId: string): Promise<PrepareResult> {
     const warnings: string[] = [];
@@ -31,14 +34,14 @@ export class GitSourceProvider implements SourceProvider {
 
     // Shallow clone into run temp directory
     const hostPath = `${TMP_BASE}/knox-${runId}/source`;
+    const cloneArgs = ["clone", "--depth", "1"];
+    if (this.ref) {
+      cloneArgs.push("--branch", this.ref);
+    }
+    cloneArgs.push(`file://${this.repoPath}`, hostPath);
+
     const clone = new Deno.Command("git", {
-      args: [
-        "clone",
-        "--depth",
-        "1",
-        `file://${this.repoPath}`,
-        hostPath,
-      ],
+      args: cloneArgs,
       stdout: "piped",
       stderr: "piped",
     });

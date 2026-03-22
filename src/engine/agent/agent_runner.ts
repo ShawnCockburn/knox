@@ -1,6 +1,7 @@
 import type { ContainerSession } from "../session/container_session.ts";
 import { PromptBuilder } from "../prompt/prompt_builder.ts";
-import { log } from "../log.ts";
+import { log } from "../../shared/log.ts";
+import type { KnoxEvent } from "../../shared/types.ts";
 
 const SENTINEL = "KNOX_COMPLETE";
 const PROMPT_PATH = "/workspace/.knox/prompt.txt";
@@ -18,6 +19,8 @@ export interface AgentRunnerOptions {
   checkCommand?: string;
   customPrompt?: string;
   onLine?: (line: string) => void;
+  onEvent?: (event: KnoxEvent) => void;
+  signal?: AbortSignal;
 }
 
 export interface AgentRunnerResult {
@@ -43,11 +46,30 @@ export class AgentRunner {
     let loopsRun = this.options.maxLoops;
 
     for (let loop = 1; loop <= this.options.maxLoops; loop++) {
+      // Check abort at loop boundary
+      if (this.options.signal?.aborted) {
+        loopsRun = loop - 1;
+        break;
+      }
+
+      this.options.onEvent?.({
+        type: "loop:start",
+        loop,
+        maxLoops: this.options.maxLoops,
+      });
+
       log.info(`Starting loop: ${loop}`);
       const result = await this.runOneLoopWithRetry(loop, checkFailure);
       log.debug(
         `Loop: ${loop} executed with complete state: ${result.completed}`,
       );
+
+      this.options.onEvent?.({
+        type: "loop:end",
+        loop,
+        completed: result.completed,
+      });
+
       checkFailure = undefined;
 
       if (result.completed) {
@@ -61,6 +83,11 @@ export class AgentRunner {
           if (checkResult.exitCode !== 0) {
             log.warn("Post loop check failed");
             checkFailure = checkResult.stdout + checkResult.stderr;
+            this.options.onEvent?.({
+              type: "check:failed",
+              loop,
+              output: checkFailure,
+            });
             continue;
           }
           log.warn("Post loop check success");
@@ -74,6 +101,7 @@ export class AgentRunner {
 
     // Commit nudge: handle uncommitted agent work
     const autoCommitted = await this.commitNudge();
+    this.options.onEvent?.({ type: "nudge:result", committed: autoCommitted });
 
     return { completed, loopsRun, autoCommitted };
   }

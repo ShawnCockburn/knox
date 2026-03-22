@@ -1,5 +1,5 @@
-import { assert, assertRejects } from "@std/assert";
-import { resolveAllowedIPs } from "../../src/knox/resolve_network.ts";
+import { assert } from "@std/assert";
+import { resolveAllowedIPs } from "../../src/shared/knox/resolve_network.ts";
 
 Deno.test("resolveAllowedIPs", async (t) => {
   await t.step("resolves DNS for API hosts", async () => {

@@ -1,5 +1,5 @@
-import type { KnoxResult } from "../knox.ts";
-import { SinkStrategy } from "../sink/result_sink.ts";
+import type { KnoxResult } from "../engine/knox.ts";
+import { SinkStrategy } from "../engine/sink/result_sink.ts";
 
 /** Format duration in milliseconds to a human-readable string. */
 export function formatDuration(ms: number): string {

@@ -1,6 +1,6 @@
 import { assertEquals, assertMatch, assertNotMatch } from "@std/assert";
-import { log } from "../src/log.ts";
-import type { LogLevel } from "../src/log.ts";
+import { log } from "../src/shared/log.ts";
+import type { LogLevel } from "../src/shared/log.ts";
 
 // Capture console.error output for assertions
 function captureStderr(fn: () => void): string[] {

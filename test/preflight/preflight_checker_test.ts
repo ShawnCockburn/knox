@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "@std/assert";
-import { PreflightChecker } from "../../src/preflight/preflight_checker.ts";
+import { PreflightChecker } from "../../src/shared/preflight/preflight_checker.ts";
 import { MockRuntime } from "../runtime/mock_runtime.ts";
 
 const checker = new PreflightChecker();

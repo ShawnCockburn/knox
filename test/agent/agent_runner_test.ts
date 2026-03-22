@@ -1,10 +1,10 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { MockRuntime } from "../runtime/mock_runtime.ts";
-import { ContainerSession } from "../../src/session/container_session.ts";
-import { AgentRunner } from "../../src/agent/agent_runner.ts";
-import type { SourceProvider } from "../../src/source/source_provider.ts";
-import { SourceStrategy } from "../../src/source/source_provider.ts";
-import type { PrepareResult } from "../../src/source/source_provider.ts";
+import { ContainerSession } from "../../src/engine/session/container_session.ts";
+import { AgentRunner } from "../../src/engine/agent/agent_runner.ts";
+import type { SourceProvider } from "../../src/engine/source/source_provider.ts";
+import { SourceStrategy } from "../../src/engine/source/source_provider.ts";
+import type { PrepareResult } from "../../src/engine/source/source_provider.ts";
 
 class MockSourceProvider implements SourceProvider {
   prepare(_runId: string): Promise<PrepareResult> {

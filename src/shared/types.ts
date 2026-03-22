@@ -59,6 +59,19 @@ export function generateRunId(): RunId {
   return crypto.randomUUID().replaceAll("-", "").slice(0, 8);
 }
 
+/** Phase where an expected engine failure occurred. */
+export type FailurePhase = "container" | "agent" | "bundle" | "sink";
+
+/** Structured lifecycle events emitted by the engine. */
+export type KnoxEvent =
+  | { type: "container:created"; containerId: string }
+  | { type: "loop:start"; loop: number; maxLoops: number }
+  | { type: "loop:end"; loop: number; completed: boolean }
+  | { type: "check:failed"; loop: number; output: string }
+  | { type: "nudge:result"; committed: boolean }
+  | { type: "bundle:extracted"; path: string }
+  | { type: "aborted" };
+
 /** Generate a URL-safe slug from a task description. */
 export function taskSlug(task: string): string {
   return task

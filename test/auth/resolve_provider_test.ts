@@ -3,7 +3,7 @@ import {
   FileProvider,
   KeychainProvider,
   resolveProvider,
-} from "../../src/auth/mod.ts";
+} from "../../src/shared/auth/mod.ts";
 
 Deno.test("resolveProvider", async (t) => {
   await t.step("returns correct provider for current platform", () => {

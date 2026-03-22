@@ -5,12 +5,12 @@ import type {
   CreateContainerOptions,
   ExecResult,
   ImageId,
-} from "../../src/types.ts";
+} from "../../src/shared/types.ts";
 import type {
   ContainerRuntime,
   ExecOptions,
   OnLineCallback,
-} from "../../src/runtime/container_runtime.ts";
+} from "../../src/shared/runtime/container_runtime.ts";
 
 /** Recorded call to the mock runtime. */
 export interface MockCall {
