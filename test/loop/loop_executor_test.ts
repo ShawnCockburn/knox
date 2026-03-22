@@ -29,6 +29,8 @@ Deno.test("LoopExecutor", async (t) => {
     runtime.execResults = [
       // mkdir
       { exitCode: 0, stdout: "", stderr: "" },
+      // chown .knox
+      { exitCode: 0, stdout: "", stderr: "" },
       // cat knox-progress.txt (not found)
       { exitCode: 1, stdout: "", stderr: "" },
       // git log (no commits)
@@ -50,6 +52,7 @@ Deno.test("LoopExecutor", async (t) => {
     const runtime = new MockRuntime();
     runtime.execResults = [
       { exitCode: 0, stdout: "", stderr: "" },
+      { exitCode: 0, stdout: "", stderr: "" },
       { exitCode: 1, stdout: "", stderr: "" },
       { exitCode: 1, stdout: "", stderr: "" },
     ];
@@ -67,6 +70,7 @@ Deno.test("LoopExecutor", async (t) => {
   await t.step("streams output via onLine callback", async () => {
     const runtime = new MockRuntime();
     runtime.execResults = [
+      { exitCode: 0, stdout: "", stderr: "" },
       { exitCode: 0, stdout: "", stderr: "" },
       { exitCode: 1, stdout: "", stderr: "" },
       { exitCode: 1, stdout: "", stderr: "" },
@@ -91,6 +95,8 @@ Deno.test("LoopExecutor", async (t) => {
     runtime.execResults = [
       // mkdir
       { exitCode: 0, stdout: "", stderr: "" },
+      // chown .knox
+      { exitCode: 0, stdout: "", stderr: "" },
       // cat knox-progress.txt
       { exitCode: 0, stdout: "## Loop 1\nDid stuff", stderr: "" },
       // git log
@@ -113,6 +119,7 @@ Deno.test("LoopExecutor", async (t) => {
   await t.step("invokes claude with correct flags", async () => {
     const runtime = new MockRuntime();
     runtime.execResults = [
+      { exitCode: 0, stdout: "", stderr: "" },
       { exitCode: 0, stdout: "", stderr: "" },
       { exitCode: 1, stdout: "", stderr: "" },
       { exitCode: 1, stdout: "", stderr: "" },
@@ -138,6 +145,8 @@ Deno.test("LoopExecutor", async (t) => {
     const runtime = new MockRuntime();
     runtime.execResults = [
       // mkdir
+      { exitCode: 0, stdout: "", stderr: "" },
+      // chown .knox
       { exitCode: 0, stdout: "", stderr: "" },
       // cat progress
       { exitCode: 1, stdout: "", stderr: "" },
@@ -168,20 +177,22 @@ Deno.test("LoopExecutor", async (t) => {
       runtime.calls.push({ method: "exec", args: [container, command, options] });
       execCallCount++;
       // Call 1: mkdir (loop 1)
-      // Call 2: cat progress (loop 1)
-      // Call 3: git log (loop 1)
-      // Call 4: check command — FAILS
-      // Call 5: mkdir (loop 2)
-      // Call 6: cat progress (loop 2)
-      // Call 7: git log (loop 2)
-      // Call 8: check command — PASSES
-      if (execCallCount === 4) {
+      // Call 2: chown .knox (loop 1)
+      // Call 3: cat progress (loop 1)
+      // Call 4: git log (loop 1)
+      // Call 5: check command — FAILS
+      // Call 6: mkdir (loop 2)
+      // Call 7: chown .knox (loop 2)
+      // Call 8: cat progress (loop 2)
+      // Call 9: git log (loop 2)
+      // Call 10: check command — PASSES
+      if (execCallCount === 5) {
         return Promise.resolve({ exitCode: 1, stdout: "FAIL", stderr: "test failed" });
       }
-      if (execCallCount === 8) {
+      if (execCallCount === 10) {
         return Promise.resolve({ exitCode: 0, stdout: "PASS", stderr: "" });
       }
-      if (execCallCount % 4 === 2) {
+      if (execCallCount % 5 === 3) {
         // cat progress — not found
         return Promise.resolve({ exitCode: 1, stdout: "", stderr: "" });
       }

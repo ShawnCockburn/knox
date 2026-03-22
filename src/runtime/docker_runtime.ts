@@ -78,6 +78,9 @@ export class DockerRuntime implements ContainerRuntime {
     options?: ExecOptions,
   ): Promise<ExecResult> {
     const args = ["exec"];
+    if (options?.user) {
+      args.push("-u", options.user);
+    }
     if (options?.workdir) {
       args.push("-w", options.workdir);
     }
@@ -95,6 +98,9 @@ export class DockerRuntime implements ContainerRuntime {
     options: ExecOptions & { onLine: OnLineCallback },
   ): Promise<number> {
     const args = ["exec"];
+    if (options.user) {
+      args.push("-u", options.user);
+    }
     if (options.workdir) {
       args.push("-w", options.workdir);
     }
@@ -137,7 +143,8 @@ export class DockerRuntime implements ContainerRuntime {
   ): Promise<void> {
     // Build an iptables script that allows only:
     // 1. Loopback traffic
-    // 2. DNS to Docker's embedded resolver (127.0.0.11)
+    // 2. DNS (udp/tcp 53) to any resolver — Docker Desktop uses the host
+    //    gateway (e.g. 192.168.65.7), not 127.0.0.11
     // 3. HTTPS (port 443) to each allowed IP
     // 4. Established/related return traffic
     // 5. Drop everything else
@@ -145,8 +152,8 @@ export class DockerRuntime implements ContainerRuntime {
       "iptables -F OUTPUT",
       "iptables -A OUTPUT -o lo -j ACCEPT",
       "iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT",
-      "iptables -A OUTPUT -p udp -d 127.0.0.11 --dport 53 -j ACCEPT",
-      "iptables -A OUTPUT -p tcp -d 127.0.0.11 --dport 53 -j ACCEPT",
+      "iptables -A OUTPUT -p udp --dport 53 -j ACCEPT",
+      "iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT",
       ...allowedIPs.map(
         (ip) => `iptables -A OUTPUT -p tcp -d ${ip} --dport 443 -j ACCEPT`,
       ),
@@ -157,7 +164,7 @@ export class DockerRuntime implements ContainerRuntime {
       "sh",
       "-c",
       rules.join(" && "),
-    ]);
+    ], { user: "root" });
     if (result.exitCode !== 0) {
       throw new Error(`Failed to restrict network: ${result.stderr}`);
     }

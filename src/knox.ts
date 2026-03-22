@@ -40,7 +40,12 @@ export class Knox {
   }
 
   private async resolveAllowedIPs(): Promise<string[]> {
-    const hosts = ["api.anthropic.com"];
+    const hosts = [
+      "api.anthropic.com",
+      "statsigapi.net",
+      "http-intake.logs.us5.datadoghq.com",
+      "sentry.io",
+    ];
     const ips = new Set<string>();
     for (const host of hosts) {
       try {
@@ -170,9 +175,14 @@ export class Knox {
       });
       console.error(`[knox] Container: ${containerId}`);
 
-      // Copy source into container
+      // Copy source into container and fix ownership
       console.error(`[knox] Copying source into container...`);
       await this.runtime.copyIn(containerId, dir, "/workspace");
+      await this.runtime.exec(
+        containerId,
+        ["chown", "-R", "knox:knox", "/workspace"],
+        { user: "root" },
+      );
 
       // Lock down network to API-only egress
       await this.runtime.restrictNetwork(containerId, allowedIPs);

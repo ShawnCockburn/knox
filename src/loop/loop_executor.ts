@@ -112,13 +112,19 @@ export class LoopExecutor {
       customPrompt: this.options.customPrompt,
     });
 
-    // Write prompt to container
+    // Write prompt to container (mkdir and chown as root since docker cp creates root-owned files)
     await this.runtime.exec(this.options.containerId, [
       "mkdir",
       "-p",
       "/workspace/.knox",
-    ]);
+    ], { user: "root" });
     await this.writePromptToContainer(PROMPT_PATH, prompt);
+    await this.runtime.exec(this.options.containerId, [
+      "chown",
+      "-R",
+      "knox:knox",
+      "/workspace/.knox",
+    ], { user: "root" });
 
     // Run claude
     let completed = false;
@@ -137,6 +143,9 @@ export class LoopExecutor {
               completed = true;
             }
             this.options.onLine?.(line);
+          } else {
+            // Forward stderr so callers can see errors
+            this.options.onLine?.(`[stderr] ${line}`);
           }
         },
       },

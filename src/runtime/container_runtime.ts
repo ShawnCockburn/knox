@@ -11,6 +11,8 @@ import type {
 export interface ExecOptions {
   workdir?: string;
   env?: string[];
+  /** User to run as (e.g., "root"). Defaults to the image's USER. */
+  user?: string;
 }
 
 /** Callback for streaming exec output line by line. */
