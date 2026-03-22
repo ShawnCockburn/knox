@@ -55,7 +55,7 @@ export class ImageManager {
       const result = await this.runtime.exec(
         containerId,
         ["sh", "-c", setupCommand],
-        { workdir: "/workspace" },
+        { workdir: "/workspace", user: "root" },
       );
 
       if (result.exitCode !== 0) {
