@@ -81,22 +81,31 @@
 
 ## Orchestration
 
-| Term                | Definition                                                                                                                    | Aliases to avoid                                 |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| **Knox**            | The top-level orchestrator that coordinates preflight, source provision, Agent execution, commit recovery, and result sinking | Runner, executor (when meaning the whole system) |
-| **Preflight Check** | A validation run before execution: Docker available, Credentials present, source directory exists, dirty working tree warning | Pre-check, startup validation                    |
-| **Loop Executor**   | The module that runs Agent Loops with retry and exponential backoff                                                           | Agent runner                                     |
-| **Image Manager**   | The module that builds the base Image and caches Setup Images                                                                 | Builder, image builder                           |
+| Term                            | Definition                                                                                                                    | Aliases to avoid                                 |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| **Knox**                        | The top-level orchestrator that coordinates preflight, source provision, Agent execution, commit recovery, and result sinking | Runner, executor (when meaning the whole system) |
+| **Preflight Check**             | A validation run before execution: Docker available, Credentials present, source directory exists, dirty working tree warning | Pre-check, startup validation                    |
+| **Container Session** (new)     | A deep module that owns the entire lifecycle of a sandboxed Container: creation, workspace setup, command execution, result extraction, and cleanup | Session, sandbox context                         |
+| **Agent Runner** (new)          | A deep module that owns Agent execution as a coherent operation: running Loops, detecting the Completion Signal, verifying Check Commands, and performing Commit Nudge with Auto-Commit fallback | Loop executor, agent loop                        |
+| **Image Manager**               | The module that builds the base Image and caches Setup Images                                                                 | Builder, image builder                           |
+| ~~**Loop Executor**~~ (removed) | Absorbed into **Agent Runner**, which owns both loop management and commit recovery as a single responsibility               | —                                                |
 
 ## Relationships
 
 - A **Knox** run generates exactly one **Run ID** and one **Run Directory**
-- A **Knox** run executes exactly one **Task** inside one **Container** named
-  `knox-<Run ID>`
+- A **Knox** run creates exactly one **Container Session**, which owns one
+  **Container** named `knox-<Run ID>`
 - A **Source Provider** prepares source material into the **Run Directory**,
   producing **Source Metadata** with a **Base Commit**
 - Source is injected into the **Container** via **Shallow Clone** — committed
   state only, no history
+- A **Container Session** hides all container plumbing: creation, source copy,
+  ownership, network restriction, git verification, exclude setup, bundle
+  extraction, and cleanup
+- An **Agent Runner** takes a **Container Session** and produces an
+  **AgentRunResult** (completed, loopsRun, autoCommitted)
+- An **Agent Runner** never touches container plumbing — it only calls
+  `exec()`, `execStream()`, and `hasDirtyTree()` on the **Container Session**
 - A **Task** produces one or more **Loops**, up to **Max Loops**
 - Each **Loop** is a fresh Claude Code invocation; the **Progress File** carries
   context between them
@@ -104,11 +113,11 @@
   Command** (if configured)
 - A **Check Failure** causes the next **Loop** to receive the failure output as
   additional context
-- After loops complete, if the Agent has uncommitted work, Knox issues a
-  **Commit Nudge**
-- If the **Commit Nudge** fails, Knox performs an **Auto-Commit**
-- A **Git Bundle** is created inside the **Container** and extracted to the
-  **Run Directory**
+- After loops complete, the **Agent Runner** checks for uncommitted work via
+  **Container Session**'s `hasDirtyTree()`, issues a **Commit Nudge**, and falls
+  back to **Auto-Commit** if needed
+- A **Git Bundle** is created inside the **Container** via **Container
+  Session**'s `extractBundle()` and extracted to the **Run Directory**
 - A **Result Sink** receives the **Git Bundle** and **Source Metadata**,
   producing a **Sink Result**
 - For `HostGit` strategy, the sink creates a **Result Branch** via `git fetch` —
@@ -120,31 +129,38 @@
 ## Example dialogue
 
 > **Dev:** "When I kick off a Knox run, what actually gets copied into the
-> Container?" **Domain expert:** "Only committed state. The **Source Provider**
-> does a **Shallow Clone** — `git clone --depth 1` — so the Agent sees the tree
-> at HEAD but no history. If you have uncommitted changes, Preflight warns you
-> but proceeds."
+> Container?"
+> **Domain expert:** "Only committed state. The **Source Provider** does a
+> **Shallow Clone** — `git clone --depth 1` — so the Agent sees the tree at HEAD
+> but no history. If you have uncommitted changes, Preflight warns you but
+> proceeds."
 >
-> **Dev:** "Why no history? Wouldn't `git blame` help the Agent?" **Domain
-> expert:** "Security. History might contain reverted secrets or credentials in
-> old diffs. The Agent gets the least access possible — one commit, one tree."
+> **Dev:** "Who manages all the container setup — copying files, permissions,
+> network lockdown?"
+> **Domain expert:** "The **Container Session**. It's a deep module — you call
+> `ContainerSession.create()` and it handles everything: creates the Container,
+> copies source in, fixes ownership, restricts network to API-only egress,
+> verifies `.git` exists, sets up excludes. Knox never touches those details."
 >
-> **Dev:** "What if the Agent finishes but forgets to commit?" **Domain
-> expert:** "Knox checks for dirty files after the loops. If there are any, it
-> runs a **Commit Nudge** — a narrow Claude invocation that just reviews the
-> diff and writes a commit message. No more coding. If the Agent still doesn't
-> commit, Knox does an **Auto-Commit** mechanically."
+> **Dev:** "What if the Agent finishes but forgets to commit?"
+> **Domain expert:** "That's the **Agent Runner**'s job. After the loops finish,
+> it asks the **Container Session** `hasDirtyTree()`. If dirty, it runs a
+> **Commit Nudge** — a narrow Claude invocation that just reviews the diff and
+> writes a commit message. If the nudge fails, it does an **Auto-Commit**
+> mechanically. Knox doesn't know any of that — it just gets back `completed`,
+> `loopsRun`, and `autoCommitted`."
 >
-> **Dev:** "And how does the work get back to my repo?" **Domain expert:** "Knox
-> creates a **Git Bundle** inside the Container, copies it to the **Run
-> Directory**, then the **Result Sink** fetches it into your repo as a **Result
-> Branch** — `knox/<slug>-<Run ID>`. Your checkout doesn't change. You review
-> with `git log` and merge when ready."
+> **Dev:** "And how does the work get back to my repo?"
+> **Domain expert:** "Knox calls `session.extractBundle()` — the **Container
+> Session** creates a **Git Bundle** inside the Container and copies it to the
+> **Run Directory**. Then the **Result Sink** fetches it into your repo as a
+> **Result Branch** — `knox/<slug>-<Run ID>`. Your checkout doesn't change."
 >
-> **Dev:** "What if I want to send the results somewhere else — like push to a
-> remote?" **Domain expert:** "Implement a different **Result Sink**. The
-> interface is container-agnostic — it just receives a bundle path and **Source
-> Metadata**. Knox doesn't care where the work ends up."
+> **Dev:** "So Knox itself is pretty thin now?"
+> **Domain expert:** "About 50 lines. It resolves auth, resolves allowed IPs,
+> creates a **Container Session**, hands it to the **Agent Runner**, then calls
+> `extractBundle()` and the **Result Sink**. Everything else is hidden inside the
+> two deep modules."
 
 ## Flagged ambiguities
 
@@ -159,7 +175,7 @@
 - **"air-gapped"** was used in early commits but replaced with **Egress
   Filtering** — the Container is not truly air-gapped since DNS and API traffic
   are allowed.
-- **"retry"** has two distinct meanings: the **Loop Executor** retries a failed
+- **"retry"** has two distinct meanings: the **Agent Runner** retries a failed
   Claude Code invocation (with exponential backoff, not counted against Max
   Loops), while a **Check Failure** causes the _next Loop_ (which _is_ counted).
   Distinguish between "retry" (transient error recovery) and "re-loop after
@@ -175,3 +191,12 @@
 - **"fallback copy"** (flagged, new) referred to dumping the Container workspace
   into the host project directory. This mechanism is removed. Do not use this
   term — if the **Git Bundle** fetch fails, it is an error, not a fallback.
+- **"loop executor"** (flagged, new) is the old module name. The concept has
+  been absorbed into **Agent Runner**, which owns both loop management and commit
+  recovery as a single coherent responsibility. Avoid "loop executor" — use
+  **Agent Runner**. The old alias warning ("Agent runner" as alias to avoid) is
+  now inverted: **Agent Runner** is the canonical term.
+- **"session" vs "container"** (flagged, new): A **Container** is the Docker
+  environment. A **Container Session** is the Knox module that manages a
+  Container's lifecycle. Do not use "session" alone — always say **Container
+  Session** to avoid confusion with HTTP sessions or user sessions.
