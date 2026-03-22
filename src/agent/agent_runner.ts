@@ -1,17 +1,17 @@
-import type { ContainerRuntime } from "../runtime/container_runtime.ts";
-import type { ContainerId } from "../types.ts";
+import type { ContainerSession } from "../session/container_session.ts";
 import { PromptBuilder } from "../prompt/prompt_builder.ts";
 import { log } from "../log.ts";
 
 const SENTINEL = "KNOX_COMPLETE";
-const WORKSPACE = "/workspace";
 const PROMPT_PATH = "/workspace/.knox/prompt.txt";
 const PROGRESS_FILE = "knox-progress.txt";
 const MAX_RETRIES = 3;
 
-export interface LoopExecutorOptions {
-  runtime: ContainerRuntime;
-  containerId: ContainerId;
+const COMMIT_NUDGE_PROMPT =
+  `You have uncommitted changes in the workspace. Review \`git diff\` and \`git status\`, then commit all changes with a meaningful conventional commit message (e.g., feat:, fix:, refactor:). Do NOT make any further code changes — only commit.`;
+
+export interface AgentRunnerOptions {
+  session: ContainerSession;
   model: string;
   task: string;
   maxLoops: number;
@@ -20,27 +20,30 @@ export interface LoopExecutorOptions {
   onLine?: (line: string) => void;
 }
 
-export interface LoopResult {
+export interface AgentRunnerResult {
   completed: boolean;
   loopsRun: number;
+  autoCommitted: boolean;
 }
 
-export class LoopExecutor {
-  private runtime: ContainerRuntime;
+export class AgentRunner {
+  private session: ContainerSession;
   private promptBuilder: PromptBuilder;
-  private options: LoopExecutorOptions;
+  private options: AgentRunnerOptions;
 
-  constructor(options: LoopExecutorOptions) {
+  constructor(options: AgentRunnerOptions) {
     this.options = options;
-    this.runtime = options.runtime;
+    this.session = options.session;
     this.promptBuilder = new PromptBuilder();
   }
 
-  async run(): Promise<LoopResult> {
+  async run(): Promise<AgentRunnerResult> {
     let checkFailure: string | undefined;
+    let completed = false;
+    let loopsRun = this.options.maxLoops;
 
     for (let loop = 1; loop <= this.options.maxLoops; loop++) {
-      log.info("Starting loop: ${loop}");
+      log.info(`Starting loop: ${loop}`);
       const result = await this.runOneLoopWithRetry(loop, checkFailure);
       log.debug(
         `Loop: ${loop} executed with complete state: ${result.completed}`,
@@ -51,26 +54,67 @@ export class LoopExecutor {
         // If there's a check command, verify
         if (this.options.checkCommand) {
           log.debug("Starting post loop check");
-          const checkResult = await this.runtime.exec(
-            this.options.containerId,
+          const checkResult = await this.session.exec(
             ["sh", "-c", this.options.checkCommand],
-            { workdir: WORKSPACE },
           );
 
           if (checkResult.exitCode !== 0) {
             log.warn("Post loop check failed");
-            // Check failed — continue looping with failure context
             checkFailure = checkResult.stdout + checkResult.stderr;
             continue;
           }
           log.warn("Post loop check success");
         }
 
-        return { completed: true, loopsRun: loop };
+        completed = true;
+        loopsRun = loop;
+        break;
       }
     }
 
-    return { completed: false, loopsRun: this.options.maxLoops };
+    // Commit nudge: handle uncommitted agent work
+    const autoCommitted = await this.commitNudge();
+
+    return { completed, loopsRun, autoCommitted };
+  }
+
+  private async commitNudge(): Promise<boolean> {
+    if (!(await this.session.hasDirtyTree())) {
+      return false;
+    }
+
+    log.info(`Agent left uncommitted changes. Nudging to commit...`);
+    try {
+      await this.session.execStream(
+        [
+          "sh",
+          "-c",
+          `echo '${
+            COMMIT_NUDGE_PROMPT.replace(/'/g, "'\\''")
+          }' | claude -p --dangerously-skip-permissions --model ${this.options.model}`,
+        ],
+        {
+          onLine: (line, stream) => {
+            if (stream === "stdout") this.options.onLine?.(line);
+          },
+        },
+      );
+    } catch {
+      // Nudge failed — fall through to mechanical auto-commit
+    }
+
+    // Check if still dirty after nudge
+    if (await this.session.hasDirtyTree()) {
+      log.info(`Nudge did not produce a commit. Auto-committing...`);
+      await this.session.exec([
+        "sh",
+        "-c",
+        `git add -A && git commit -m "knox: auto-commit uncommitted agent work"`,
+      ]);
+      return true;
+    }
+
+    return false;
   }
 
   private async runOneLoopWithRetry(
@@ -121,29 +165,25 @@ export class LoopExecutor {
     });
 
     // Write prompt to container (mkdir and chown as root since docker cp creates root-owned files)
-    await this.runtime.exec(
-      this.options.containerId,
+    await this.session.exec(
       ["mkdir", "-p", "/workspace/.knox"],
       { user: "root" },
     );
     await this.writePromptToContainer(PROMPT_PATH, prompt);
-    await this.runtime.exec(
-      this.options.containerId,
+    await this.session.exec(
       ["chown", "-R", "knox:knox", "/workspace/.knox"],
       { user: "root" },
     );
 
     // Run claude
     let completed = false;
-    const exitCode = await this.runtime.execStream(
-      this.options.containerId,
+    const exitCode = await this.session.execStream(
       [
         "sh",
         "-c",
         `claude -p --dangerously-skip-permissions --model ${this.options.model} < ${PROMPT_PATH}`,
       ],
       {
-        workdir: WORKSPACE,
         onLine: (line, stream) => {
           if (stream === "stdout") {
             if (line.includes(SENTINEL)) {
@@ -151,7 +191,6 @@ export class LoopExecutor {
             }
             this.options.onLine?.(line);
           } else {
-            // Forward stderr so callers can see errors
             this.options.onLine?.(`[stderr] ${line}`);
           }
         },
@@ -162,19 +201,17 @@ export class LoopExecutor {
   }
 
   private async readProgressFile(): Promise<string | undefined> {
-    const result = await this.runtime.exec(this.options.containerId, [
+    const result = await this.session.exec([
       "cat",
-      `${WORKSPACE}/${PROGRESS_FILE}`,
+      PROGRESS_FILE,
     ]);
     if (result.exitCode !== 0) return undefined;
     return result.stdout || undefined;
   }
 
   private async readGitLog(): Promise<string | undefined> {
-    const result = await this.runtime.exec(
-      this.options.containerId,
+    const result = await this.session.exec(
       ["git", "log", "--oneline"],
-      { workdir: WORKSPACE },
     );
     if (result.exitCode !== 0) return undefined;
     return result.stdout || undefined;
@@ -184,15 +221,13 @@ export class LoopExecutor {
     containerPath: string,
     content: string,
   ): Promise<void> {
-    // Write to a temp file on host, then copyIn
+    // Write to a temp file on host, then copy via session
     const tmpFile = await Deno.makeTempFile({ suffix: ".txt" });
     try {
       await Deno.writeTextFile(tmpFile, content);
-      await this.runtime.copyIn(
-        this.options.containerId,
-        tmpFile,
-        containerPath,
-      );
+      // Use the session's containerId for the low-level copyIn
+      // This is a necessary coupling since copyIn is a runtime-level operation
+      await this.session.copyIn(tmpFile, containerPath);
     } finally {
       await Deno.remove(tmpFile).catch(() => {});
     }

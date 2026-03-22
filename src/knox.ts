@@ -1,21 +1,17 @@
 import type { ContainerRuntime } from "./runtime/container_runtime.ts";
 import { DockerRuntime } from "./runtime/docker_runtime.ts";
 import { ImageManager } from "./image/image_manager.ts";
-import { LoopExecutor } from "./loop/loop_executor.ts";
+import { AgentRunner } from "./agent/agent_runner.ts";
 import { PreflightChecker } from "./preflight/preflight_checker.ts";
-import { CredentialError, getCredential } from "./auth/mod.ts";
+import { ContainerSession } from "./session/container_session.ts";
+import { resolveAuth } from "./knox/resolve_auth.ts";
+import { resolveAllowedIPs } from "./knox/resolve_network.ts";
 import { generateRunId, taskSlug } from "./types.ts";
-import type { ContainerId } from "./types.ts";
 import type { SourceProvider } from "./source/source_provider.ts";
 import { GitSourceProvider } from "./source/git_source_provider.ts";
 import type { ResultSink, SinkResult } from "./sink/result_sink.ts";
 import { GitBranchSink } from "./sink/git_branch_sink.ts";
 import { log } from "./log.ts";
-
-const WORKSPACE = "/workspace";
-
-const COMMIT_NUDGE_PROMPT =
-  `You have uncommitted changes in the workspace. Review \`git diff\` and \`git status\`, then commit all changes with a meaningful conventional commit message (e.g., feat:, fix:, refactor:). Do NOT make any further code changes — only commit.`;
 
 export interface KnoxOptions {
   task: string;
@@ -58,41 +54,6 @@ export class Knox {
     this.runtime = options.runtime ?? new DockerRuntime();
   }
 
-  private async resolveAllowedIPs(): Promise<string[]> {
-    const hosts = [
-      "api.anthropic.com",
-      "statsigapi.net",
-      "http-intake.logs.us5.datadoghq.com",
-      "sentry.io",
-    ];
-    const ips = new Set<string>();
-    for (const host of hosts) {
-      try {
-        const records = await Deno.resolveDns(host, "A");
-        for (const ip of records) ips.add(ip);
-      } catch {
-        const cmd = new Deno.Command("dig", {
-          args: ["+short", host, "A"],
-          stdout: "piped",
-          stderr: "null",
-        });
-        const output = await cmd.output();
-        const lines = new TextDecoder().decode(output.stdout).trim().split(
-          "\n",
-        );
-        for (const line of lines) {
-          if (/^\d+\.\d+\.\d+\.\d+$/.test(line)) ips.add(line);
-        }
-      }
-    }
-    if (ips.size === 0) {
-      throw new Error(
-        "Failed to resolve Anthropic API IPs — cannot set up network restriction",
-      );
-    }
-    return [...ips];
-  }
-
   async run(): Promise<KnoxResult> {
     const startedAt = new Date().toISOString();
     const runId = generateRunId();
@@ -118,12 +79,12 @@ export class Knox {
       new GitSourceProvider(dir);
     const resultSink = this.options.resultSink ?? new GitBranchSink(dir);
 
-    let containerId: ContainerId | undefined;
+    let session: ContainerSession | undefined;
 
     const onSignal = () => {
-      if (containerId) {
+      if (session) {
         log.info(`\nInterrupted. Cleaning up container...`);
-        this.runtime.remove(containerId).catch(() => {}).finally(() => {
+        session.dispose().catch(() => {}).finally(() => {
           Deno.exit(130);
         });
       } else {
@@ -167,94 +128,28 @@ export class Knox {
       log.debug(`Image ready: ${image}`);
 
       // Resolve authentication
-      log.info(`Resolving authentication...`);
-      const envVars = [...env];
-      const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
-      try {
-        const credential = await getCredential();
-        envVars.push(`CLAUDE_CODE_OAUTH_TOKEN=${credential.accessToken}`);
-        log.debug(`Using OAuth credential for authentication`);
-      } catch (e) {
-        if (e instanceof CredentialError) {
-          if (apiKey) {
-            envVars.push(`ANTHROPIC_API_KEY=${apiKey}`);
-            log.debug(`Using ANTHROPIC_API_KEY for authentication`);
-          }
-        } else {
-          throw e;
-        }
-      }
+      const envVars = await resolveAuth(env);
 
       // Resolve Anthropic API IPs for network restriction
-      log.info(`Resolving API endpoints...`);
-      const allowedIPs = await this.resolveAllowedIPs();
-      log.debug(`Allowed IPs: ${allowedIPs.join(", ")}`);
+      const allowedIPs = await resolveAllowedIPs();
 
-      // Prepare source
-      log.info(`Preparing source...`);
-      const prepareResult = await sourceProvider.prepare(runId);
-      for (const warning of prepareResult.warnings ?? []) {
-        log.warn(warning);
-      }
-
-      // Create container
-      log.info(`Creating container (API-only network)...`);
-      containerId = await this.runtime.createContainer({
+      // Create sandboxed container session
+      session = await ContainerSession.create({
+        runtime: this.runtime,
+        runId,
+        runDir,
         image,
-        name: `knox-${runId}`,
-        workdir: WORKSPACE,
-        env: envVars,
-        networkEnabled: true,
-        capAdd: ["NET_ADMIN"],
+        envVars,
+        allowedIPs,
+        sourceProvider,
         cpuLimit,
         memoryLimit,
       });
-      log.debug(`Container: ${containerId}`);
-
-      // Copy source into container and fix ownership
-      log.info(`Copying source into container...`);
-      await this.runtime.copyIn(
-        containerId,
-        prepareResult.hostPath + "/.",
-        WORKSPACE,
-      );
-      await this.runtime.exec(
-        containerId,
-        ["chown", "-R", "knox:knox", WORKSPACE],
-        { user: "root" },
-      );
-
-      // Cleanup source temp files
-      await sourceProvider.cleanup(runId);
-
-      // Lock down network to API-only egress
-      await this.runtime.restrictNetwork(containerId, allowedIPs);
-      log.debug(`Network restricted to API endpoints only`);
-
-      // Verify git repo exists in workspace (source provider must supply .git)
-      const gitCheck = await this.runtime.exec(containerId, [
-        "sh",
-        "-c",
-        `cd ${WORKSPACE} && git rev-parse --git-dir`,
-      ]);
-      if (gitCheck.exitCode !== 0) {
-        throw new Error(
-          "No .git directory in workspace after source copy — aborting",
-        );
-      }
-
-      // Exclude knox internal files from agent commits (via .git/info/exclude so it never leaks)
-      await this.runtime.exec(containerId, [
-        "sh",
-        "-c",
-        `cd ${WORKSPACE} && printf 'knox-progress.txt\\n.knox/\\n' >> .git/info/exclude`,
-      ]);
 
       // Run the agent loop
       log.info(`Starting agent loop (max ${maxLoops} loops)...`);
-      const executor = new LoopExecutor({
-        runtime: this.runtime,
-        containerId,
+      const agentRunner = new AgentRunner({
+        session,
         model,
         task,
         maxLoops,
@@ -262,75 +157,11 @@ export class Knox {
         customPrompt,
         onLine,
       });
-      const loopResult = await executor.run();
+      const agentResult = await agentRunner.run();
 
-      // Commit nudge: handle uncommitted agent work
-      let autoCommitted = false;
-      const statusResult = await this.runtime.exec(
-        containerId,
-        ["git", "status", "--porcelain"],
-        { workdir: WORKSPACE },
-      );
-      const hasDirtyFiles = statusResult.stdout.trim().length > 0;
-
-      if (hasDirtyFiles) {
-        log.info(`Agent left uncommitted changes. Nudging to commit...`);
-        // Nudge: run claude one more time with a narrow commit-only prompt
-        try {
-          await this.runtime.execStream(
-            containerId,
-            [
-              "sh",
-              "-c",
-              `echo '${
-                COMMIT_NUDGE_PROMPT.replace(/'/g, "'\\''")
-              }' | claude -p --dangerously-skip-permissions --model ${model}`,
-            ],
-            {
-              workdir: WORKSPACE,
-              onLine: (line, stream) => {
-                if (stream === "stdout") onLine?.(line);
-              },
-            },
-          );
-        } catch {
-          // Nudge failed — fall through to mechanical auto-commit
-        }
-
-        // Check if still dirty after nudge
-        const postNudge = await this.runtime.exec(
-          containerId,
-          ["git", "status", "--porcelain"],
-          { workdir: WORKSPACE },
-        );
-        if (postNudge.stdout.trim().length > 0) {
-          log.info(`Nudge did not produce a commit. Auto-committing...`);
-          await this.runtime.exec(
-            containerId,
-            [
-              "sh",
-              "-c",
-              `cd ${WORKSPACE} && git add -A && git commit -m "knox: auto-commit uncommitted agent work"`,
-            ],
-          );
-          autoCommitted = true;
-        }
-      }
-
-      // Create git bundle inside container
+      // Create git bundle and copy to host
       log.info(`Creating git bundle...`);
-      const bundleResult = await this.runtime.exec(
-        containerId,
-        ["git", "bundle", "create", "/tmp/knox.bundle", "HEAD"],
-        { workdir: WORKSPACE },
-      );
-      if (bundleResult.exitCode !== 0) {
-        throw new Error(`git bundle create failed: ${bundleResult.stderr}`);
-      }
-
-      // Copy bundle out to run directory
-      const bundlePath = `${runDir}/bundle.git`;
-      await this.runtime.copyOut(containerId, "/tmp/knox.bundle", bundlePath);
+      const bundlePath = await session.extractBundle();
 
       // Collect result via sink
       log.info(`Extracting results...`);
@@ -338,16 +169,16 @@ export class Knox {
       const sinkResult = await resultSink.collect({
         runId,
         bundlePath,
-        metadata: prepareResult.metadata,
+        metadata: session.metadata,
         taskSlug: slug,
-        autoCommitted,
+        autoCommitted: agentResult.autoCommitted,
       });
       await resultSink.cleanup(runId);
 
       // Derive checkPassed
       const checkPassed = check == null
         ? null
-        : loopResult.completed
+        : agentResult.completed
         ? true
         : false;
 
@@ -355,30 +186,29 @@ export class Knox {
       const durationMs = new Date(finishedAt).getTime() -
         new Date(startedAt).getTime();
 
-      if (loopResult.completed) {
-        log.info(`Task completed in ${loopResult.loopsRun} loop(s).`);
+      if (agentResult.completed) {
+        log.info(`Task completed in ${agentResult.loopsRun} loop(s).`);
       } else {
         log.info(`Max loops (${maxLoops}) reached.`);
       }
 
       return {
-        completed: loopResult.completed,
-        loopsRun: loopResult.loopsRun,
+        completed: agentResult.completed,
+        loopsRun: agentResult.loopsRun,
         maxLoops,
         startedAt,
         finishedAt,
         durationMs,
         model,
         task,
-        autoCommitted,
+        autoCommitted: agentResult.autoCommitted,
         checkPassed,
         sink: sinkResult,
       };
     } finally {
       Deno.removeSignalListener("SIGINT", onSignal);
-      if (containerId) {
-        log.info(`Cleaning up container...`);
-        await this.runtime.remove(containerId);
+      if (session) {
+        await session.dispose();
       }
       // Clean up run temp directory
       await Deno.remove(runDir, { recursive: true }).catch(() => {});

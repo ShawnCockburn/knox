@@ -7,8 +7,10 @@ export type {
 } from "./runtime/mod.ts";
 export { DockerRuntime } from "./runtime/mod.ts";
 export { ImageManager } from "./image/mod.ts";
-export { LoopExecutor } from "./loop/mod.ts";
-export type { LoopExecutorOptions, LoopResult } from "./loop/mod.ts";
+export { AgentRunner } from "./agent/mod.ts";
+export type { AgentRunnerOptions, AgentRunnerResult } from "./agent/mod.ts";
+export { ContainerSession } from "./session/mod.ts";
+export type { ContainerSessionOptions } from "./session/mod.ts";
 export { PromptBuilder } from "./prompt/mod.ts";
 export type { PromptContext } from "./prompt/mod.ts";
 export { PreflightChecker } from "./preflight/mod.ts";
@@ -36,6 +38,10 @@ export type {
   RunId,
 } from "./types.ts";
 export { generateRunId, taskSlug } from "./types.ts";
+
+// Pre-container functions
+export { resolveAuth } from "./knox/mod.ts";
+export { resolveAllowedIPs } from "./knox/mod.ts";
 
 // Source provider
 export type {
