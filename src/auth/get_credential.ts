@@ -26,7 +26,9 @@ export async function getCredential(): Promise<ClaudeOAuthCredential> {
   const credential = await provider.getCredential();
 
   if (isExpired(credential)) {
-    log.warn(`OAuth token expired at ${new Date(credential.expiresAt).toISOString()}`);
+    log.warn(
+      `OAuth token expired at ${new Date(credential.expiresAt).toISOString()}`,
+    );
   }
 
   return credential;

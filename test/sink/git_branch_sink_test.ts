@@ -45,12 +45,21 @@ async function setupBundleScenario(): Promise<{
   // Clone (simulates what GitSourceProvider does)
   const cloneDir = await Deno.makeTempDir({ prefix: "knox-clone-" });
   await Deno.remove(cloneDir); // git clone needs target not to exist
-  await git(hostRepo, ["clone", "--depth", "1", `file://${hostRepo}`, cloneDir]);
+  await git(hostRepo, [
+    "clone",
+    "--depth",
+    "1",
+    `file://${hostRepo}`,
+    cloneDir,
+  ]);
   await git(cloneDir, ["config", "user.email", "agent@knox.dev"]);
   await git(cloneDir, ["config", "user.name", "Knox Agent"]);
 
   // Simulate agent work: add a file and commit
-  await Deno.writeTextFile(`${cloneDir}/agent-work.ts`, "export const x = 42;\n");
+  await Deno.writeTextFile(
+    `${cloneDir}/agent-work.ts`,
+    "export const x = 42;\n",
+  );
   await git(cloneDir, ["add", "-A"]);
   await git(cloneDir, ["commit", "-m", "feat: add agent work"]);
 

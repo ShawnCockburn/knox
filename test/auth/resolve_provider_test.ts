@@ -1,8 +1,8 @@
 import { assertEquals } from "@std/assert";
 import {
-  resolveProvider,
-  KeychainProvider,
   FileProvider,
+  KeychainProvider,
+  resolveProvider,
 } from "../../src/auth/mod.ts";
 
 Deno.test("resolveProvider", async (t) => {

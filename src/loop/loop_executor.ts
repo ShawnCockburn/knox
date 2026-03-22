@@ -1,6 +1,7 @@
 import type { ContainerRuntime } from "../runtime/container_runtime.ts";
 import type { ContainerId } from "../types.ts";
 import { PromptBuilder } from "../prompt/prompt_builder.ts";
+import { log } from "../log.ts";
 
 const SENTINEL = "KNOX_COMPLETE";
 const WORKSPACE = "/workspace";
@@ -39,12 +40,17 @@ export class LoopExecutor {
     let checkFailure: string | undefined;
 
     for (let loop = 1; loop <= this.options.maxLoops; loop++) {
+      log.info("Starting loop: ${loop}");
       const result = await this.runOneLoopWithRetry(loop, checkFailure);
+      log.debug(
+        `Loop: ${loop} executed with complete state: ${result.completed}`,
+      );
       checkFailure = undefined;
 
       if (result.completed) {
         // If there's a check command, verify
         if (this.options.checkCommand) {
+          log.debug("Starting post loop check");
           const checkResult = await this.runtime.exec(
             this.options.containerId,
             ["sh", "-c", this.options.checkCommand],
@@ -52,10 +58,12 @@ export class LoopExecutor {
           );
 
           if (checkResult.exitCode !== 0) {
+            log.warn("Post loop check failed");
             // Check failed — continue looping with failure context
             checkFailure = checkResult.stdout + checkResult.stderr;
             continue;
           }
+          log.warn("Post loop check success");
         }
 
         return { completed: true, loopsRun: loop };
@@ -113,18 +121,17 @@ export class LoopExecutor {
     });
 
     // Write prompt to container (mkdir and chown as root since docker cp creates root-owned files)
-    await this.runtime.exec(this.options.containerId, [
-      "mkdir",
-      "-p",
-      "/workspace/.knox",
-    ], { user: "root" });
+    await this.runtime.exec(
+      this.options.containerId,
+      ["mkdir", "-p", "/workspace/.knox"],
+      { user: "root" },
+    );
     await this.writePromptToContainer(PROMPT_PATH, prompt);
-    await this.runtime.exec(this.options.containerId, [
-      "chown",
-      "-R",
-      "knox:knox",
-      "/workspace/.knox",
-    ], { user: "root" });
+    await this.runtime.exec(
+      this.options.containerId,
+      ["chown", "-R", "knox:knox", "/workspace/.knox"],
+      { user: "root" },
+    );
 
     // Run claude
     let completed = false;

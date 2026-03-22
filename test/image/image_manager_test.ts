@@ -27,16 +27,19 @@ Deno.test("ImageManager", async (t) => {
     assertEquals(runtime.callsTo("buildImage").length, 0);
   });
 
-  await t.step("ensureSetupImage returns base image when no setup", async () => {
-    const runtime = new MockRuntime();
-    runtime.imageExistsResult = true;
-    const manager = new ImageManager(runtime);
+  await t.step(
+    "ensureSetupImage returns base image when no setup",
+    async () => {
+      const runtime = new MockRuntime();
+      runtime.imageExistsResult = true;
+      const manager = new ImageManager(runtime);
 
-    const image = await manager.ensureSetupImage();
+      const image = await manager.ensureSetupImage();
 
-    assertEquals(image, "knox-agent:latest");
-    assertEquals(runtime.callsTo("createContainer").length, 0);
-  });
+      assertEquals(image, "knox-agent:latest");
+      assertEquals(runtime.callsTo("createContainer").length, 0);
+    },
+  );
 
   await t.step("ensureSetupImage runs setup and commits", async () => {
     const runtime = new MockRuntime();
@@ -84,26 +87,34 @@ Deno.test("ImageManager", async (t) => {
     assertEquals(image.startsWith("knox-cache:"), true);
   });
 
-  await t.step("ensureSetupImage produces deterministic cache tags", async () => {
-    const runtime = new MockRuntime();
-    runtime.imageExistsResult = true;
-    const manager = new ImageManager(runtime);
+  await t.step(
+    "ensureSetupImage produces deterministic cache tags",
+    async () => {
+      const runtime = new MockRuntime();
+      runtime.imageExistsResult = true;
+      const manager = new ImageManager(runtime);
 
-    const image1 = await manager.ensureSetupImage("npm install");
-    const image2 = await manager.ensureSetupImage("npm install");
+      const image1 = await manager.ensureSetupImage("npm install");
+      const image2 = await manager.ensureSetupImage("npm install");
 
-    assertEquals(image1, image2);
-  });
+      assertEquals(image1, image2);
+    },
+  );
 
-  await t.step("ensureSetupImage produces different tags for different commands", async () => {
-    const runtime = new MockRuntime();
-    runtime.imageExistsResult = true;
-    const manager = new ImageManager(runtime);
+  await t.step(
+    "ensureSetupImage produces different tags for different commands",
+    async () => {
+      const runtime = new MockRuntime();
+      runtime.imageExistsResult = true;
+      const manager = new ImageManager(runtime);
 
-    const image1 = await manager.ensureSetupImage("npm install");
-    const image2 = await manager.ensureSetupImage("pip install -r requirements.txt");
+      const image1 = await manager.ensureSetupImage("npm install");
+      const image2 = await manager.ensureSetupImage(
+        "pip install -r requirements.txt",
+      );
 
-    // Tags should be different
-    assertEquals(image1 !== image2, true);
-  });
+      // Tags should be different
+      assertEquals(image1 !== image2, true);
+    },
+  );
 });

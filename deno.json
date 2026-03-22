@@ -23,5 +23,10 @@
   },
   "compilerOptions": {
     "strict": true
+  },
+  "lint": {
+    "rules": {
+      "exclude": ["no-control-regex"]
+    }
   }
 }

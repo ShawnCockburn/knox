@@ -3,7 +3,7 @@ import { DockerRuntime } from "./runtime/docker_runtime.ts";
 import { ImageManager } from "./image/image_manager.ts";
 import { LoopExecutor } from "./loop/loop_executor.ts";
 import { PreflightChecker } from "./preflight/preflight_checker.ts";
-import { getCredential, CredentialError } from "./auth/mod.ts";
+import { CredentialError, getCredential } from "./auth/mod.ts";
 import { generateRunId, taskSlug } from "./types.ts";
 import type { ContainerId } from "./types.ts";
 import type { SourceProvider } from "./source/source_provider.ts";
@@ -14,7 +14,8 @@ import { log } from "./log.ts";
 
 const WORKSPACE = "/workspace";
 
-const COMMIT_NUDGE_PROMPT = `You have uncommitted changes in the workspace. Review \`git diff\` and \`git status\`, then commit all changes with a meaningful conventional commit message (e.g., feat:, fix:, refactor:). Do NOT make any further code changes — only commit.`;
+const COMMIT_NUDGE_PROMPT =
+  `You have uncommitted changes in the workspace. Review \`git diff\` and \`git status\`, then commit all changes with a meaningful conventional commit message (e.g., feat:, fix:, refactor:). Do NOT make any further code changes — only commit.`;
 
 export interface KnoxOptions {
   task: string;
@@ -212,7 +213,11 @@ export class Knox {
 
       // Copy source into container and fix ownership
       log.info(`Copying source into container...`);
-      await this.runtime.copyIn(containerId, prepareResult.hostPath + "/.", WORKSPACE);
+      await this.runtime.copyIn(
+        containerId,
+        prepareResult.hostPath + "/.",
+        WORKSPACE,
+      );
       await this.runtime.exec(
         containerId,
         ["chown", "-R", "knox:knox", WORKSPACE],
@@ -277,7 +282,9 @@ export class Knox {
             [
               "sh",
               "-c",
-              `echo '${COMMIT_NUDGE_PROMPT.replace(/'/g, "'\\''")}' | claude -p --dangerously-skip-permissions --model ${model}`,
+              `echo '${
+                COMMIT_NUDGE_PROMPT.replace(/'/g, "'\\''")
+              }' | claude -p --dangerously-skip-permissions --model ${model}`,
             ],
             {
               workdir: WORKSPACE,
@@ -345,8 +352,8 @@ export class Knox {
         : false;
 
       const finishedAt = new Date().toISOString();
-      const durationMs =
-        new Date(finishedAt).getTime() - new Date(startedAt).getTime();
+      const durationMs = new Date(finishedAt).getTime() -
+        new Date(startedAt).getTime();
 
       if (loopResult.completed) {
         log.info(`Task completed in ${loopResult.loopsRun} loop(s).`);

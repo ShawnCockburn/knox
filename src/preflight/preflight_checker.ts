@@ -18,7 +18,10 @@ export class PreflightChecker {
 
     // Check container runtime
     try {
-      const result = await options.runtime.exec("__preflight__", ["echo", "ok"]);
+      const result = await options.runtime.exec("__preflight__", [
+        "echo",
+        "ok",
+      ]);
       // This will always fail since the container doesn't exist, but we actually
       // need to check if docker itself is available
       void result;

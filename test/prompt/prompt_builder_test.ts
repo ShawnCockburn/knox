@@ -47,7 +47,8 @@ Deno.test("PromptBuilder", async (t) => {
   });
 
   await t.step("includes progress file content when present", () => {
-    const progress = "## Loop 1\n- **Status**: partial\n- **What was done**: started work";
+    const progress =
+      "## Loop 1\n- **Status**: partial\n- **What was done**: started work";
     const result = builder.build({
       task: "test",
       loopNumber: 2,
@@ -80,7 +81,8 @@ Deno.test("PromptBuilder", async (t) => {
   });
 
   await t.step("includes check failure when present", () => {
-    const failure = "Error: test 'should add numbers' failed\nExpected 4 but got 5";
+    const failure =
+      "Error: test 'should add numbers' failed\nExpected 4 but got 5";
     const result = builder.build({
       task: "test",
       loopNumber: 3,

@@ -179,7 +179,11 @@ export class DockerRuntime implements ContainerRuntime {
     hostPath: string,
     containerPath: string,
   ): Promise<void> {
-    const result = await this.run(["cp", hostPath, `${container}:${containerPath}`]);
+    const result = await this.run([
+      "cp",
+      hostPath,
+      `${container}:${containerPath}`,
+    ]);
     if (result.exitCode !== 0) {
       throw new Error(`docker cp (in) failed: ${result.stderr}`);
     }
@@ -190,7 +194,11 @@ export class DockerRuntime implements ContainerRuntime {
     containerPath: string,
     hostPath: string,
   ): Promise<void> {
-    const result = await this.run(["cp", `${container}:${containerPath}`, hostPath]);
+    const result = await this.run([
+      "cp",
+      `${container}:${containerPath}`,
+      hostPath,
+    ]);
     if (result.exitCode !== 0) {
       throw new Error(`docker cp (out) failed: ${result.stderr}`);
     }

@@ -1,4 +1,5 @@
-export const DEFAULT_PROMPT = `You are an AI coding agent running inside a sandboxed container. You have full filesystem and process access inside this container. There is no network access.
+export const DEFAULT_PROMPT =
+  `You are an AI coding agent running inside a sandboxed container. You have full filesystem and process access inside this container. There is no network access.
 
 You are working on a task assigned by the user. Follow these phases in order:
 

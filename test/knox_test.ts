@@ -247,7 +247,10 @@ Deno.test("Knox orchestrator", async (t) => {
 
     let statusCallCount = 0;
     runtime.exec = (container, command, options) => {
-      runtime.calls.push({ method: "exec", args: [container, command, options] });
+      runtime.calls.push({
+        method: "exec",
+        args: [container, command, options],
+      });
       // First git status --porcelain: dirty; second: clean (nudge worked)
       if (
         command[0] === "git" && command[1] === "status" &&

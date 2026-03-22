@@ -137,7 +137,10 @@ Deno.test("LoopExecutor", async (t) => {
     assertEquals(command[0], "sh");
     assertEquals(command[1], "-c");
     assertStringIncludes(command[2] as string, "claude -p");
-    assertStringIncludes(command[2] as string, "--dangerously-skip-permissions");
+    assertStringIncludes(
+      command[2] as string,
+      "--dangerously-skip-permissions",
+    );
     assertStringIncludes(command[2] as string, "--model sonnet");
   });
 
@@ -169,46 +172,56 @@ Deno.test("LoopExecutor", async (t) => {
     assertEquals(result.loopsRun, 1);
   });
 
-  await t.step("check command: continues looping when check fails", async () => {
-    const runtime = new MockRuntime();
-    // We need different results per exec call, so we override exec
-    let execCallCount = 0;
-    runtime.exec = (container, command, options) => {
-      runtime.calls.push({ method: "exec", args: [container, command, options] });
-      execCallCount++;
-      // Call 1: mkdir (loop 1)
-      // Call 2: chown .knox (loop 1)
-      // Call 3: cat progress (loop 1)
-      // Call 4: git log (loop 1)
-      // Call 5: check command — FAILS
-      // Call 6: mkdir (loop 2)
-      // Call 7: chown .knox (loop 2)
-      // Call 8: cat progress (loop 2)
-      // Call 9: git log (loop 2)
-      // Call 10: check command — PASSES
-      if (execCallCount === 5) {
-        return Promise.resolve({ exitCode: 1, stdout: "FAIL", stderr: "test failed" });
-      }
-      if (execCallCount === 10) {
-        return Promise.resolve({ exitCode: 0, stdout: "PASS", stderr: "" });
-      }
-      if (execCallCount % 5 === 3) {
-        // cat progress — not found
-        return Promise.resolve({ exitCode: 1, stdout: "", stderr: "" });
-      }
-      return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
-    };
-    runtime.execStreamLines = [
-      { line: "KNOX_COMPLETE", stream: "stdout" },
-    ];
+  await t.step(
+    "check command: continues looping when check fails",
+    async () => {
+      const runtime = new MockRuntime();
+      // We need different results per exec call, so we override exec
+      let execCallCount = 0;
+      runtime.exec = (container, command, options) => {
+        runtime.calls.push({
+          method: "exec",
+          args: [container, command, options],
+        });
+        execCallCount++;
+        // Call 1: mkdir (loop 1)
+        // Call 2: chown .knox (loop 1)
+        // Call 3: cat progress (loop 1)
+        // Call 4: git log (loop 1)
+        // Call 5: check command — FAILS
+        // Call 6: mkdir (loop 2)
+        // Call 7: chown .knox (loop 2)
+        // Call 8: cat progress (loop 2)
+        // Call 9: git log (loop 2)
+        // Call 10: check command — PASSES
+        if (execCallCount === 5) {
+          return Promise.resolve({
+            exitCode: 1,
+            stdout: "FAIL",
+            stderr: "test failed",
+          });
+        }
+        if (execCallCount === 10) {
+          return Promise.resolve({ exitCode: 0, stdout: "PASS", stderr: "" });
+        }
+        if (execCallCount % 5 === 3) {
+          // cat progress — not found
+          return Promise.resolve({ exitCode: 1, stdout: "", stderr: "" });
+        }
+        return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+      };
+      runtime.execStreamLines = [
+        { line: "KNOX_COMPLETE", stream: "stdout" },
+      ];
 
-    const executor = createExecutor(runtime, {
-      maxLoops: 3,
-      checkCommand: "npm test",
-    });
-    const result = await executor.run();
+      const executor = createExecutor(runtime, {
+        maxLoops: 3,
+        checkCommand: "npm test",
+      });
+      const result = await executor.run();
 
-    assertEquals(result.completed, true);
-    assertEquals(result.loopsRun, 2);
-  });
+      assertEquals(result.completed, true);
+      assertEquals(result.loopsRun, 2);
+    },
+  );
 });

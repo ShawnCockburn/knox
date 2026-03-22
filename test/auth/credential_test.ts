@@ -17,18 +17,33 @@ Deno.test("CredentialError", async (t) => {
 
 Deno.test("isExpired", async (t) => {
   await t.step("returns true for past timestamp", () => {
-    const cred = { accessToken: "x", refreshToken: "y", expiresAt: 1000, scopes: [] };
+    const cred = {
+      accessToken: "x",
+      refreshToken: "y",
+      expiresAt: 1000,
+      scopes: [],
+    };
     assertEquals(isExpired(cred), true);
   });
 
   await t.step("returns false for future timestamp", () => {
     const future = Date.now() + 3_600_000;
-    const cred = { accessToken: "x", refreshToken: "y", expiresAt: future, scopes: [] };
+    const cred = {
+      accessToken: "x",
+      refreshToken: "y",
+      expiresAt: future,
+      scopes: [],
+    };
     assertEquals(isExpired(cred), false);
   });
 
   await t.step("returns false when expiresAt is 0 (env var override)", () => {
-    const cred = { accessToken: "x", refreshToken: "y", expiresAt: 0, scopes: [] };
+    const cred = {
+      accessToken: "x",
+      refreshToken: "y",
+      expiresAt: 0,
+      scopes: [],
+    };
     assertEquals(isExpired(cred), false);
   });
 });
