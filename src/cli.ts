@@ -2,6 +2,7 @@ import { parseArgs } from "@std/cli";
 import { resolve } from "@std/path";
 import { Knox } from "./knox.ts";
 import { formatSummary } from "./cli/format.ts";
+import { log } from "./log.ts";
 
 const flags = parseArgs(Deno.args, {
   string: [
@@ -15,9 +16,21 @@ const flags = parseArgs(Deno.args, {
     "cpu",
     "memory",
   ],
+  boolean: ["verbose", "quiet"],
   collect: ["env"],
   default: { dir: ".", model: "sonnet", "max-loops": "10" },
 });
+
+if (flags.verbose && flags.quiet) {
+  console.error("Error: --verbose and --quiet are mutually exclusive");
+  Deno.exit(2);
+}
+
+if (flags.verbose) {
+  log.setLevel("debug");
+} else if (flags.quiet) {
+  log.setLevel("warn");
+}
 
 if (!flags.task) {
   console.error(
@@ -33,7 +46,9 @@ Options:
   --env KEY=VALUE     Environment variable (repeatable)
   --prompt <path>     Custom prompt file
   --cpu <limit>       CPU limit (e.g., "2")
-  --memory <limit>    Memory limit (e.g., "4g")`,
+  --memory <limit>    Memory limit (e.g., "4g")
+  --verbose           Show debug-level messages
+  --quiet             Suppress info messages (show warnings and errors only)`,
   );
   Deno.exit(2);
 }
@@ -69,14 +84,14 @@ try {
   });
 
   const result = await knox.run();
-  console.error(formatSummary(result));
+  log.always(formatSummary(result));
 
   if (!result.completed) {
     Deno.exit(1);
   }
 } catch (e) {
   const msg = e instanceof Error ? e.message : String(e);
-  console.error(`[knox] Fatal: ${msg}`);
+  log.error(`Fatal: ${msg}`);
   // Exit code 2 for preflight failures, 3 for crashes
   if (msg.includes("Preflight checks failed")) {
     Deno.exit(2);

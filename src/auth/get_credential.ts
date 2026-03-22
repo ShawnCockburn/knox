@@ -1,5 +1,6 @@
 import type { ClaudeOAuthCredential } from "./credential.ts";
 import { resolveProvider } from "./resolve_provider.ts";
+import { log } from "../log.ts";
 
 /**
  * Retrieve the Claude Code OAuth credential.
@@ -25,9 +26,7 @@ export async function getCredential(): Promise<ClaudeOAuthCredential> {
   const credential = await provider.getCredential();
 
   if (isExpired(credential)) {
-    console.error(
-      `[knox] Warning: OAuth token expired at ${new Date(credential.expiresAt).toISOString()}`,
-    );
+    log.warn(`OAuth token expired at ${new Date(credential.expiresAt).toISOString()}`);
   }
 
   return credential;

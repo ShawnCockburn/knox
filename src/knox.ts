@@ -10,6 +10,7 @@ import type { SourceProvider } from "./source/source_provider.ts";
 import { GitSourceProvider } from "./source/git_source_provider.ts";
 import type { ResultSink, SinkResult } from "./sink/result_sink.ts";
 import { GitBranchSink } from "./sink/git_branch_sink.ts";
+import { log } from "./log.ts";
 
 const WORKSPACE = "/workspace";
 
@@ -120,7 +121,7 @@ export class Knox {
 
     const onSignal = () => {
       if (containerId) {
-        console.error(`\n[knox] Interrupted. Cleaning up container...`);
+        log.info(`\nInterrupted. Cleaning up container...`);
         this.runtime.remove(containerId).catch(() => {}).finally(() => {
           Deno.exit(130);
         });
@@ -141,12 +142,12 @@ export class Knox {
         });
 
         for (const warning of preflightResult.warnings) {
-          console.error(`[knox] Warning: ${warning}`);
+          log.warn(warning);
         }
 
         if (!preflightResult.ok) {
           for (const error of preflightResult.errors) {
-            console.error(`[knox] Error: ${error}`);
+            log.error(error);
           }
           throw new Error("Preflight checks failed");
         }
@@ -160,25 +161,23 @@ export class Knox {
 
       // Build/cache images
       const imageManager = new ImageManager(this.runtime);
-      console.error(`[knox] Ensuring agent image...`);
+      log.info(`Ensuring agent image...`);
       const image = await imageManager.ensureSetupImage(setup);
-      console.error(`[knox] Image ready: ${image}`);
+      log.debug(`Image ready: ${image}`);
 
       // Resolve authentication
-      console.error(`[knox] Resolving authentication...`);
+      log.info(`Resolving authentication...`);
       const envVars = [...env];
       const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
       try {
         const credential = await getCredential();
         envVars.push(`CLAUDE_CODE_OAUTH_TOKEN=${credential.accessToken}`);
-        console.error(`[knox] Using OAuth credential for authentication`);
+        log.debug(`Using OAuth credential for authentication`);
       } catch (e) {
         if (e instanceof CredentialError) {
           if (apiKey) {
             envVars.push(`ANTHROPIC_API_KEY=${apiKey}`);
-            console.error(
-              `[knox] Using ANTHROPIC_API_KEY for authentication`,
-            );
+            log.debug(`Using ANTHROPIC_API_KEY for authentication`);
           }
         } else {
           throw e;
@@ -186,19 +185,19 @@ export class Knox {
       }
 
       // Resolve Anthropic API IPs for network restriction
-      console.error(`[knox] Resolving API endpoints...`);
+      log.info(`Resolving API endpoints...`);
       const allowedIPs = await this.resolveAllowedIPs();
-      console.error(`[knox] Allowed IPs: ${allowedIPs.join(", ")}`);
+      log.debug(`Allowed IPs: ${allowedIPs.join(", ")}`);
 
       // Prepare source
-      console.error(`[knox] Preparing source...`);
+      log.info(`Preparing source...`);
       const prepareResult = await sourceProvider.prepare(runId);
       for (const warning of prepareResult.warnings ?? []) {
-        console.error(`[knox] Warning: ${warning}`);
+        log.warn(warning);
       }
 
       // Create container
-      console.error(`[knox] Creating container (API-only network)...`);
+      log.info(`Creating container (API-only network)...`);
       containerId = await this.runtime.createContainer({
         image,
         name: `knox-${runId}`,
@@ -209,10 +208,10 @@ export class Knox {
         cpuLimit,
         memoryLimit,
       });
-      console.error(`[knox] Container: ${containerId}`);
+      log.debug(`Container: ${containerId}`);
 
       // Copy source into container and fix ownership
-      console.error(`[knox] Copying source into container...`);
+      log.info(`Copying source into container...`);
       await this.runtime.copyIn(containerId, prepareResult.hostPath + "/.", WORKSPACE);
       await this.runtime.exec(
         containerId,
@@ -225,7 +224,7 @@ export class Knox {
 
       // Lock down network to API-only egress
       await this.runtime.restrictNetwork(containerId, allowedIPs);
-      console.error(`[knox] Network restricted to API endpoints only`);
+      log.debug(`Network restricted to API endpoints only`);
 
       // Verify git repo exists in workspace (source provider must supply .git)
       const gitCheck = await this.runtime.exec(containerId, [
@@ -247,7 +246,7 @@ export class Knox {
       ]);
 
       // Run the agent loop
-      console.error(`[knox] Starting agent loop (max ${maxLoops} loops)...`);
+      log.info(`Starting agent loop (max ${maxLoops} loops)...`);
       const executor = new LoopExecutor({
         runtime: this.runtime,
         containerId,
@@ -270,9 +269,7 @@ export class Knox {
       const hasDirtyFiles = statusResult.stdout.trim().length > 0;
 
       if (hasDirtyFiles) {
-        console.error(
-          `[knox] Agent left uncommitted changes. Nudging to commit...`,
-        );
+        log.info(`Agent left uncommitted changes. Nudging to commit...`);
         // Nudge: run claude one more time with a narrow commit-only prompt
         try {
           await this.runtime.execStream(
@@ -300,9 +297,7 @@ export class Knox {
           { workdir: WORKSPACE },
         );
         if (postNudge.stdout.trim().length > 0) {
-          console.error(
-            `[knox] Nudge did not produce a commit. Auto-committing...`,
-          );
+          log.info(`Nudge did not produce a commit. Auto-committing...`);
           await this.runtime.exec(
             containerId,
             [
@@ -316,7 +311,7 @@ export class Knox {
       }
 
       // Create git bundle inside container
-      console.error(`[knox] Creating git bundle...`);
+      log.info(`Creating git bundle...`);
       const bundleResult = await this.runtime.exec(
         containerId,
         ["git", "bundle", "create", "/tmp/knox.bundle", "HEAD"],
@@ -331,7 +326,7 @@ export class Knox {
       await this.runtime.copyOut(containerId, "/tmp/knox.bundle", bundlePath);
 
       // Collect result via sink
-      console.error(`[knox] Extracting results...`);
+      log.info(`Extracting results...`);
       const slug = taskSlug(task);
       const sinkResult = await resultSink.collect({
         runId,
@@ -354,13 +349,9 @@ export class Knox {
         new Date(finishedAt).getTime() - new Date(startedAt).getTime();
 
       if (loopResult.completed) {
-        console.error(
-          `[knox] Task completed in ${loopResult.loopsRun} loop(s).`,
-        );
+        log.info(`Task completed in ${loopResult.loopsRun} loop(s).`);
       } else {
-        console.error(
-          `[knox] Max loops (${maxLoops}) reached.`,
-        );
+        log.info(`Max loops (${maxLoops}) reached.`);
       }
 
       return {
@@ -379,12 +370,12 @@ export class Knox {
     } finally {
       Deno.removeSignalListener("SIGINT", onSignal);
       if (containerId) {
-        console.error(`[knox] Cleaning up container...`);
+        log.info(`Cleaning up container...`);
         await this.runtime.remove(containerId);
       }
       // Clean up run temp directory
       await Deno.remove(runDir, { recursive: true }).catch(() => {});
-      console.error(`[knox] Done.`);
+      log.info(`Done.`);
     }
   }
 }
