@@ -48,13 +48,12 @@ Deno.test("DockerRuntime", async (t) => {
       },
     );
     assertEquals(exitCode, 0);
+    // -t (PTY) merges stderr into stdout, so all lines arrive on stdout
     const stdoutLines = lines.filter((l) => l.stream === "stdout");
-    const stderrLines = lines.filter((l) => l.stream === "stderr");
-    assertEquals(stdoutLines.length, 2);
+    assertEquals(stdoutLines.length, 3);
     assertEquals(stdoutLines[0].line, "line1");
     assertEquals(stdoutLines[1].line, "line2");
-    assertEquals(stderrLines.length, 1);
-    assertEquals(stderrLines[0].line, "err1");
+    assertEquals(stdoutLines[2].line, "err1");
   });
 
   await t.step("remove cleans up the container", async () => {
