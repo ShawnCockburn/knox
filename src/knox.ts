@@ -213,7 +213,7 @@ export class Knox {
 
       // Copy source into container and fix ownership
       console.error(`[knox] Copying source into container...`);
-      await this.runtime.copyIn(containerId, prepareResult.hostPath, WORKSPACE);
+      await this.runtime.copyIn(containerId, prepareResult.hostPath + "/.", WORKSPACE);
       await this.runtime.exec(
         containerId,
         ["chown", "-R", "knox:knox", WORKSPACE],
@@ -227,11 +227,23 @@ export class Knox {
       await this.runtime.restrictNetwork(containerId, allowedIPs);
       console.error(`[knox] Network restricted to API endpoints only`);
 
-      // Ensure git is initialized inside container
+      // Verify git repo exists in workspace (source provider must supply .git)
+      const gitCheck = await this.runtime.exec(containerId, [
+        "sh",
+        "-c",
+        `cd ${WORKSPACE} && git rev-parse --git-dir`,
+      ]);
+      if (gitCheck.exitCode !== 0) {
+        throw new Error(
+          "No .git directory in workspace after source copy — aborting",
+        );
+      }
+
+      // Exclude knox internal files from agent commits (via .git/info/exclude so it never leaks)
       await this.runtime.exec(containerId, [
         "sh",
         "-c",
-        `cd ${WORKSPACE} && (git rev-parse --git-dir 2>/dev/null || (git init && git add -A && git commit -m 'initial' --allow-empty))`,
+        `cd ${WORKSPACE} && printf 'knox-progress.txt\\n.knox/\\n' >> .git/info/exclude`,
       ]);
 
       // Run the agent loop
