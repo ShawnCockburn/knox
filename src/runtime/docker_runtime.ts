@@ -97,7 +97,10 @@ export class DockerRuntime implements ContainerRuntime {
     command: string[],
     options: ExecOptions & { onLine: OnLineCallback },
   ): Promise<number> {
-    const args = ["exec"];
+    // -t allocates a pseudo-TTY so the child process (claude -p) uses
+    // line-buffered streaming text output instead of block-buffered JSON.
+    // Trade-off: -t merges stderr into stdout and adds \r to line endings.
+    const args = ["exec", "-t"];
     if (options.user) {
       args.push("-u", options.user);
     }
@@ -124,7 +127,8 @@ export class DockerRuntime implements ContainerRuntime {
         .pipeThrough(new TextDecoderStream())
         .pipeThrough(new TextLineStream());
       for await (const line of lines) {
-        options.onLine(line, name);
+        // Strip \r added by the PTY
+        options.onLine(line.replace(/\r$/, ""), name);
       }
     };
 
