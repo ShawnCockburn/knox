@@ -40,7 +40,7 @@ export class DockerRuntime implements ContainerRuntime {
   }
 
   async createContainer(options: CreateContainerOptions): Promise<ContainerId> {
-    const name = `knox-${crypto.randomUUID().slice(0, 8)}`;
+    const name = options.name ?? `knox-${crypto.randomUUID().slice(0, 8)}`;
     const args = ["run", "-d", "--name", name];
 
     if (options.workdir) {

@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { taskSlug } from "../../src/result/result_extractor.ts";
+import { taskSlug } from "../../src/types.ts";
 
 Deno.test("taskSlug", async (t) => {
   await t.step("converts to lowercase with hyphens", () => {

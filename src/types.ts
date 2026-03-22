@@ -14,6 +14,8 @@ export interface ExecResult {
 /** Options for creating a container. */
 export interface CreateContainerOptions {
   image: ImageId;
+  /** Container name (auto-generated if omitted). */
+  name?: string;
   /** Working directory inside the container. */
   workdir?: string;
   /** Environment variables as KEY=VALUE strings. */
@@ -47,4 +49,21 @@ export interface CommitOptions {
   container: ContainerId;
   tag: string;
   message?: string;
+}
+
+/** Unique run identifier (8 hex characters). */
+export type RunId = string;
+
+/** Generate an 8-hex-character run ID from a UUID. */
+export function generateRunId(): RunId {
+  return crypto.randomUUID().replaceAll("-", "").slice(0, 8);
+}
+
+/** Generate a URL-safe slug from a task description. */
+export function taskSlug(task: string): string {
+  return task
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 50);
 }

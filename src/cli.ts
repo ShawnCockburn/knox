@@ -1,6 +1,7 @@
 import { parseArgs } from "@std/cli";
 import { resolve } from "@std/path";
 import { Knox } from "./knox.ts";
+import { formatSummary } from "./cli/format.ts";
 
 const flags = parseArgs(Deno.args, {
   string: [
@@ -68,6 +69,7 @@ try {
   });
 
   const result = await knox.run();
+  console.error(formatSummary(result));
 
   if (!result.completed) {
     Deno.exit(1);

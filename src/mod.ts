@@ -11,8 +11,6 @@ export { LoopExecutor } from "./loop/mod.ts";
 export type { LoopExecutorOptions, LoopResult } from "./loop/mod.ts";
 export { PromptBuilder } from "./prompt/mod.ts";
 export type { PromptContext } from "./prompt/mod.ts";
-export { ResultExtractor, taskSlug } from "./result/mod.ts";
-export type { ExtractOptions, ExtractResult } from "./result/mod.ts";
 export { PreflightChecker } from "./preflight/mod.ts";
 export type { PreflightResult } from "./preflight/mod.ts";
 export {
@@ -35,4 +33,24 @@ export type {
   CreateContainerOptions,
   ExecResult,
   ImageId,
+  RunId,
 } from "./types.ts";
+export { generateRunId, taskSlug } from "./types.ts";
+
+// Source provider
+export type {
+  HostGitSourceMetadata,
+  PrepareResult,
+  SourceMetadata,
+  SourceProvider,
+} from "./source/mod.ts";
+export { GitSourceProvider, SourceStrategy } from "./source/mod.ts";
+
+// Result sink
+export type {
+  CollectOptions,
+  HostGitSinkResult,
+  ResultSink,
+  SinkResult,
+} from "./sink/mod.ts";
+export { GitBranchSink, SinkStrategy } from "./sink/mod.ts";
