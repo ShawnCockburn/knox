@@ -1,0 +1,37 @@
+concurrency: 3
+
+defaults:
+  model: sonnet
+  check: "deno check src/**/*.ts"
+  maxLoops: 3
+
+items:
+  # Independent items — all start immediately
+  - id: add-logger
+    task: "Add a structured logger utility to src/shared/logger.ts that wraps console with log levels (debug, info, warn, error) and JSON output mode"
+
+  - id: add-retry
+    task: "Add a retry utility to src/shared/retry.ts with exponential backoff, max attempts, and a jitter option"
+
+  - id: add-health-check
+    task: "Add a /healthz endpoint to the API that returns 200 OK with uptime and version info"
+
+  # Depends on logger — starts after add-logger completes
+  - id: add-request-logging
+    task: "Add request/response logging middleware using the structured logger from src/shared/logger.ts"
+    dependsOn: [add-logger]
+
+  # Group: error-handling — these run sequentially on a shared branch
+  - id: error-types
+    task: "Define typed error classes (NotFoundError, ValidationError, AuthError) in src/shared/errors.ts"
+    group: error-handling
+
+  - id: error-middleware
+    task: "Add centralized error-handling middleware that catches typed errors and returns appropriate HTTP status codes"
+    dependsOn: [error-types]
+    group: error-handling
+
+  # Depends on multiple items — starts when both retry and error-types are done
+  - id: resilient-client
+    task: "Create an HTTP client wrapper in src/shared/http_client.ts that uses the retry utility and throws typed errors"
+    dependsOn: [add-retry, error-types]

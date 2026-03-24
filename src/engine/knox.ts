@@ -105,6 +105,7 @@ export class Knox {
     const resultSink = this.options.resultSink ?? new GitBranchSink(dir);
 
     let session: ContainerSession | undefined;
+    let onAbort: (() => void) | undefined;
 
     const partial: Partial<KnoxResult> = {
       runId,
@@ -164,7 +165,12 @@ export class Knox {
           memoryLimit,
         });
         emit({ type: "container:created", containerId: session.containerId });
+
+        // Register abort listener to kill container immediately
+        onAbort = () => { session!.dispose(); };
+        signal?.addEventListener("abort", onAbort);
       } catch (e) {
+        if (signal?.aborted) return makeAbortResult();
         return {
           ok: false,
           error: e instanceof Error ? e.message : String(e),
@@ -197,6 +203,7 @@ export class Knox {
         });
         agentResult = await agentRunner.run();
       } catch (e) {
+        if (signal?.aborted) return makeAbortResult();
         return {
           ok: false,
           error: e instanceof Error ? e.message : String(e),
@@ -219,6 +226,7 @@ export class Knox {
         bundlePath = await session.extractBundle();
         emit({ type: "bundle:extracted", path: bundlePath });
       } catch (e) {
+        if (signal?.aborted) return makeAbortResult();
         return {
           ok: false,
           error: e instanceof Error ? e.message : String(e),
@@ -245,6 +253,7 @@ export class Knox {
         });
         await resultSink.cleanup(runId);
       } catch (e) {
+        if (signal?.aborted) return makeAbortResult();
         return {
           ok: false,
           error: e instanceof Error ? e.message : String(e),
@@ -289,6 +298,10 @@ export class Knox {
         },
       };
     } finally {
+      // Remove abort listener before dispose to prevent double-dispose
+      if (onAbort) {
+        signal?.removeEventListener("abort", onAbort);
+      }
       if (session) {
         await session.dispose();
       }

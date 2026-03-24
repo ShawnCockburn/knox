@@ -27,6 +27,11 @@ export interface OrchestratorOptions {
   onLine?: (itemId: string, line: string) => void;
   /** Callback for structured lifecycle events. */
   onEvent?: (itemId: string, event: KnoxEvent) => void;
+  /** Callbacks for orchestrator-level item state changes. */
+  onItemRunning?: (itemId: string) => void;
+  onItemCompleted?: (itemId: string, branch?: string) => void;
+  onItemFailed?: (itemId: string, error: string) => void;
+  onItemBlocked?: (itemId: string, blockedBy: string) => void;
   /** Suppress the text summary (when TUI handles display). */
   suppressSummary?: boolean;
   /** Container runtime override (for testing). */
@@ -185,6 +190,7 @@ export class Orchestrator {
           if (state.items[item.id].status === "pending") {
             state.items[item.id].status = "blocked";
             state.items[item.id].blockedBy = "aborted";
+            this.options.onItemBlocked?.(item.id, "aborted");
             await source.update(item.id, state.items[item.id]);
           }
         }
@@ -246,6 +252,7 @@ export class Orchestrator {
       startedAt: itemStartedAt,
     };
     await source.update(item.id, state.items[item.id]);
+    this.options.onItemRunning?.(item.id);
     log.info(`[${item.id}] Starting...`);
 
     // Merge defaults + item overrides
@@ -338,7 +345,18 @@ export class Orchestrator {
       const itemDurationMs = new Date(itemFinishedAt).getTime() -
         new Date(itemStartedAt).getTime();
 
-      if (outcome.ok) {
+      if (outcome.ok && outcome.result.aborted) {
+        // Aborted: container was killed mid-execution
+        state.items[item.id] = {
+          status: "blocked",
+          startedAt: itemStartedAt,
+          finishedAt: itemFinishedAt,
+          durationMs: itemDurationMs,
+          blockedBy: "aborted",
+          outcome,
+        };
+        log.info(`[${item.id}] Aborted`);
+      } else if (outcome.ok) {
         const branch = outcome.result.sink.strategy === "host-git"
           ? outcome.result.sink.branchName
           : undefined;
@@ -357,6 +375,7 @@ export class Orchestrator {
           groupBranches.set(item.group, branch);
         }
 
+        this.options.onItemCompleted?.(item.id, branch);
         log.info(
           `[${item.id}] Completed in ${formatDuration(itemDurationMs)}${
             branch ? ` → ${branch}` : ""
@@ -371,6 +390,7 @@ export class Orchestrator {
           outcome,
         };
 
+        this.options.onItemFailed?.(item.id, outcome.error);
         log.info(`[${item.id}] Failed: ${outcome.error}`);
 
         // Block dependents transitively
@@ -413,6 +433,7 @@ export class Orchestrator {
           status: "blocked",
           blockedBy: failedId,
         };
+        this.options.onItemBlocked?.(item.id, failedId);
         // Recursively block their dependents
         this.blockDependents(item.id, manifest, state);
       }

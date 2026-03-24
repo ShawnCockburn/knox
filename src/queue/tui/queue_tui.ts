@@ -38,6 +38,8 @@ export interface QueueTUIOptions {
   /** Override terminal dimensions (for testing). */
   columns?: number;
   rows?: number;
+  /** Override output writer (for testing). */
+  write?: (s: string) => void;
 }
 
 /** Color for a display status. */
@@ -79,6 +81,8 @@ export class QueueTUI {
   private intervalId: number | null = null;
   private lastLineCount = 0;
   private frozen = false;
+  private aborting = false;
+  private stopped = false;
   private readonly encoder = new TextEncoder();
 
   /** Rolling log buffer for verbose mode. */
@@ -162,8 +166,9 @@ export class QueueTUI {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
+    this.stopped = true;
     if (!this.frozen) {
-      this.render(); // final render
+      this.render(); // final render — shows [Aborted] if aborting
       this.frozen = true;
     }
     this.write(SHOW_CURSOR);
@@ -179,6 +184,16 @@ export class QueueTUI {
     }
   }
 
+  /** Signal that abort has been requested. Header shows [Aborting...]. */
+  setAborting(): void {
+    this.aborting = true;
+  }
+
+  /** Whether the run was aborted. */
+  get isAborting(): boolean {
+    return this.aborting;
+  }
+
   /** Get terminal dimensions. */
   private getTermSize(): { columns: number; rows: number } {
     return {
@@ -187,9 +202,13 @@ export class QueueTUI {
     };
   }
 
-  /** Write raw string to stderr. */
+  /** Write raw string to output (stderr or test override). */
   private write(s: string): void {
-    Deno.stderr.writeSync(this.encoder.encode(s));
+    if (this.options.write) {
+      this.options.write(s);
+    } else {
+      Deno.stderr.writeSync(this.encoder.encode(s));
+    }
   }
 
   /** Render the full display: header + table rows + optional log panel. */
@@ -218,25 +237,37 @@ export class QueueTUI {
       }
     }
 
-    // --- Clear previous frame and write new one ---
-    this.clearPrevious();
-    const output = lines.join("\n") + "\n";
-    this.write(output);
-    this.lastLineCount = lines.length;
-  }
-
-  /** Clear previous render by moving cursor up and clearing lines. */
-  private clearPrevious(): void {
-    if (this.lastLineCount > 0) {
-      // Move cursor up N lines
-      this.write(`${ESC}${this.lastLineCount}A`);
-      // Clear each line
-      for (let i = 0; i < this.lastLineCount; i++) {
-        this.write(`${CLEAR_LINE}\n`);
-      }
-      // Move back up
-      this.write(`${ESC}${this.lastLineCount}A`);
+    // Cap frame height to rows - 1 to prevent terminal scrolling
+    const maxHeight = Math.max(1, rows - 1);
+    if (lines.length > maxHeight) {
+      lines.length = maxHeight;
     }
+
+    // --- Overwrite in place (single buffered write) ---
+    let buf = "";
+
+    // Move cursor to start of previous frame
+    if (this.lastLineCount > 0) {
+      buf += `${ESC}${this.lastLineCount}A`;
+    }
+
+    // Write each line with clear-line prefix
+    for (const line of lines) {
+      buf += `\r${CLEAR_LINE}${line}\n`;
+    }
+
+    // Clear orphan lines if frame shrunk
+    const orphans = this.lastLineCount - lines.length;
+    if (orphans > 0) {
+      for (let i = 0; i < orphans; i++) {
+        buf += `\r${CLEAR_LINE}\n`;
+      }
+      // Move cursor back up to end of new frame
+      buf += `${ESC}${orphans}A`;
+    }
+
+    this.write(buf);
+    this.lastLineCount = lines.length;
   }
 
   /** Render the header line. */
@@ -266,7 +297,16 @@ export class QueueTUI {
     }
 
     const countStr = parts.join(", ");
-    return `${BOLD}${name}${RESET} ${DIM}${elapsed}${RESET}  ${countStr}`;
+    let header = `${BOLD}${name}${RESET} ${DIM}${elapsed}${RESET}  ${countStr}`;
+
+    // Abort labels
+    if (this.aborting && this.stopped) {
+      header += `  ${RED}${BOLD}[Aborted]${RESET}`;
+    } else if (this.aborting) {
+      header += `  ${YELLOW}${BOLD}[Aborting...]${RESET}`;
+    }
+
+    return header;
   }
 
   /** Render table rows, with truncation for large queues. */
@@ -394,6 +434,31 @@ export class QueueTUI {
       const color = this.logColorMap.get(itemId) ?? DIM;
       return `  ${color}[${itemId}]${RESET} ${line}`;
     });
+  }
+
+  /** Format a one-line summary for stderr output after stop. */
+  formatSummary(): string {
+    const counts = this.aggregateCounts();
+    const elapsed = formatElapsed(this.startedAt);
+
+    // Determine prefix
+    let prefix: string;
+    if (this.aborting) {
+      prefix = "Aborted";
+    } else if (counts.failed > 0) {
+      prefix = "Failed";
+    } else {
+      prefix = "Completed";
+    }
+
+    // Build count parts
+    const parts: string[] = [];
+    if (counts.completed > 0) parts.push(`${counts.completed} completed`);
+    if (counts.failed > 0) parts.push(`${counts.failed} failed`);
+    if (counts.aborted > 0) parts.push(`${counts.aborted} aborted`);
+    if (counts.blocked > 0) parts.push(`${counts.blocked} blocked`);
+
+    return `${prefix}: ${parts.join(", ")}  (${elapsed})`;
   }
 
   /** Aggregate item status counts. */

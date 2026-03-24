@@ -24,31 +24,42 @@ function colorize(text: string, color: string): string {
 
 class Logger {
   private threshold: number = LEVELS.info;
+  private muted = false;
 
   setLevel(level: LogLevel): void {
     this.threshold = LEVELS[level];
   }
 
+  /** Suppress all log output (for TUI mode). */
+  mute(): void {
+    this.muted = true;
+  }
+
+  /** Restore log output. */
+  unmute(): void {
+    this.muted = false;
+  }
+
   debug(message: string): void {
-    if (LEVELS.debug >= this.threshold) {
+    if (!this.muted && LEVELS.debug >= this.threshold) {
       console.error(`${colorize("[knox:DEBUG]", GRAY)} ${message}`);
     }
   }
 
   info(message: string): void {
-    if (LEVELS.info >= this.threshold) {
+    if (!this.muted && LEVELS.info >= this.threshold) {
       console.error(`[knox:INFO] ${message}`);
     }
   }
 
   warn(message: string): void {
-    if (LEVELS.warn >= this.threshold) {
+    if (!this.muted && LEVELS.warn >= this.threshold) {
       console.error(`${colorize("[knox:WARN]", YELLOW)} ${message}`);
     }
   }
 
   error(message: string): void {
-    if (LEVELS.error >= this.threshold) {
+    if (!this.muted && LEVELS.error >= this.threshold) {
       console.error(`${colorize("[knox:ERROR]", RED)} ${message}`);
     }
   }

@@ -135,17 +135,18 @@ if (effectiveCommand === "queue") {
       renderer = new StaticRenderer({ verbose: isVerbose });
     }
 
-    // 6. Wire SIGINT to AbortController + TUI freeze
+    // 6. Wire SIGINT to AbortController + TUI abort feedback
     const controller = new AbortController();
     Deno.addSignalListener("SIGINT", () => {
       controller.abort();
-      if (useTUI && renderer instanceof QueueTUI) {
-        // TUI will receive aborted events from the orchestrator;
-        // the freeze happens in stop() after the orchestrator finishes
-      } else {
+      renderer.setAborting();
+      if (!useTUI) {
         log.info(`\nInterrupted. Aborting queue...`);
       }
     });
+
+    // Mute logger during TUI to prevent stderr interleaving
+    if (useTUI) log.mute();
 
     renderer.start();
 
@@ -160,16 +161,28 @@ if (effectiveCommand === "queue") {
       signal: controller.signal,
       resume: flags.resume as boolean,
       verbose: isVerbose,
-      suppressSummary: useTUI,
+      suppressSummary: true, // summary printed by renderer below
       runtime,
       onLine: (itemId, line) => renderer.appendLine(itemId, line),
       onEvent: (itemId, event) => renderer.update(itemId, event),
+      onItemRunning: (itemId) => renderer.markItemRunning(itemId),
+      onItemCompleted: (itemId, branch) =>
+        renderer.markItemCompleted(itemId, branch),
+      onItemFailed: (itemId, error) => renderer.markItemFailed(itemId, error),
+      onItemBlocked: (itemId, blockedBy) =>
+        renderer.markItemBlocked(itemId, blockedBy),
     });
 
     const report = await orchestrator.run();
     renderer.stop();
 
-    // 6. Print JSON report to stdout
+    // Unmute logger after TUI stops
+    if (useTUI) log.unmute();
+
+    // 8. Print summary to stderr
+    console.error(renderer.formatSummary());
+
+    // 9. Print JSON report to stdout
     console.log(JSON.stringify(report, null, 2));
 
     // 7. Exit code
