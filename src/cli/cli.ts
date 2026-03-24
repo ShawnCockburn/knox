@@ -13,6 +13,8 @@ import {
   Orchestrator,
   OrchestratorValidationError,
 } from "../queue/orchestrator.ts";
+import { StaticRenderer } from "../queue/tui/static_renderer.ts";
+import { QueueTUI } from "../queue/tui/queue_tui.ts";
 
 const USAGE = `Usage: knox <command> [options]
 
@@ -44,7 +46,8 @@ const QUEUE_USAGE = `Usage: knox queue --file <path> [options]
 Options:
   --file <path>       Queue file path (required)
   --resume            Resume from last checkpoint
-  --verbose           Show debug-level messages`;
+  --verbose           Show debug-level messages
+  --no-tui            Disable live TUI (uses static log lines)`;
 
 // Detect subcommand
 const subcommand = Deno.args[0];
@@ -58,7 +61,7 @@ const effectiveArgs = isFlag ? Deno.args : subcommandArgs;
 if (effectiveCommand === "queue") {
   const flags = parseArgs(effectiveArgs, {
     string: ["file"],
-    boolean: ["resume", "verbose"],
+    boolean: ["resume", "verbose", "no-tui"],
   });
 
   if (flags.verbose) {
@@ -114,14 +117,39 @@ if (effectiveCommand === "queue") {
     const queueName = basename(queueFilePath).replace(/\.ya?ml$/, "");
     const logDir = resolve(dirname(queueFilePath), `${queueName}.logs`);
 
-    // 4. Wire SIGINT to AbortController
+    // 4. Determine TUI mode
+    const isTTY = Deno.stderr.isTerminal();
+    const useTUI = isTTY && !flags["no-tui"];
+    const isVerbose = flags.verbose as boolean;
+
+    // 5. Create renderer
+    const itemIds = manifest.items.map((i) => i.id);
+    let renderer: StaticRenderer | QueueTUI;
+
+    if (useTUI) {
+      renderer = new QueueTUI(itemIds, {
+        verbose: isVerbose,
+        queueName: queueName,
+      });
+    } else {
+      renderer = new StaticRenderer({ verbose: isVerbose });
+    }
+
+    // 6. Wire SIGINT to AbortController + TUI freeze
     const controller = new AbortController();
     Deno.addSignalListener("SIGINT", () => {
-      log.info(`\nInterrupted. Aborting queue...`);
       controller.abort();
+      if (useTUI && renderer instanceof QueueTUI) {
+        // TUI will receive aborted events from the orchestrator;
+        // the freeze happens in stop() after the orchestrator finishes
+      } else {
+        log.info(`\nInterrupted. Aborting queue...`);
+      }
     });
 
-    // 5. Run orchestrator
+    renderer.start();
+
+    // 7. Run orchestrator
     const orchestrator = new Orchestrator({
       source,
       image,
@@ -131,14 +159,15 @@ if (effectiveCommand === "queue") {
       logDir,
       signal: controller.signal,
       resume: flags.resume as boolean,
-      verbose: flags.verbose as boolean,
+      verbose: isVerbose,
+      suppressSummary: useTUI,
       runtime,
-      onLine: flags.verbose
-        ? (itemId, line) => console.error(`[${itemId}] ${line}`)
-        : undefined,
+      onLine: (itemId, line) => renderer.appendLine(itemId, line),
+      onEvent: (itemId, event) => renderer.update(itemId, event),
     });
 
     const report = await orchestrator.run();
+    renderer.stop();
 
     // 6. Print JSON report to stdout
     console.log(JSON.stringify(report, null, 2));

@@ -5,6 +5,7 @@ import {
 } from "../../src/queue/orchestrator.ts";
 import type { KnoxEngineOptions, KnoxOutcome } from "../../src/engine/knox.ts";
 import { SinkStrategy } from "../../src/engine/sink/result_sink.ts";
+import type { KnoxEvent } from "../../src/shared/types.ts";
 import type {
   ItemState,
   LoadResult,
@@ -997,6 +998,83 @@ Deno.test("Orchestrator", async (t) => {
   });
 
   // --- Phase 4: AbortSignal ---
+
+  await t.step("onEvent callback receives (itemId, event) pairs", async () => {
+    const logDir = await setupLogDir();
+    try {
+      const events: Array<{ itemId: string; event: KnoxEvent }> = [];
+
+      // Engine that emits events via onEvent callback
+      const engineFactory = (opts: KnoxEngineOptions) => ({
+        async run(): Promise<KnoxOutcome> {
+          // Simulate engine emitting events
+          opts.onEvent?.({ type: "container:created", containerId: "c1" });
+          opts.onEvent?.({ type: "loop:start", loop: 1, maxLoops: 3 });
+          opts.onEvent?.({ type: "loop:end", loop: 1, completed: true });
+          opts.onEvent?.({ type: "bundle:extracted", path: "/tmp/b" });
+
+          return {
+            ok: true,
+            result: {
+              runId: opts.runId!,
+              completed: true,
+              aborted: false,
+              loopsRun: 1,
+              maxLoops: 3,
+              startedAt: new Date().toISOString(),
+              finishedAt: new Date().toISOString(),
+              durationMs: 100,
+              model: "sonnet",
+              task: opts.task,
+              autoCommitted: false,
+              checkPassed: null,
+              sink: {
+                strategy: SinkStrategy.HostGit,
+                branchName: `knox/test-${opts.runId}`,
+                commitCount: 1,
+                autoCommitted: false,
+              },
+            },
+          };
+        },
+      });
+
+      const source = new MockQueueSource({
+        items: [
+          { id: "a", task: "Task A" },
+          { id: "b", task: "Task B" },
+        ],
+      });
+
+      const orchestrator = new Orchestrator({
+        source,
+        image: "knox-agent:latest",
+        envVars: [],
+        allowedIPs: [],
+        dir: Deno.cwd(),
+        logDir,
+        engineFactory,
+        onEvent: (itemId, event) => events.push({ itemId, event }),
+      });
+
+      await orchestrator.run();
+
+      // Each item should have emitted 4 events
+      const aEvents = events.filter((e) => e.itemId === "a");
+      const bEvents = events.filter((e) => e.itemId === "b");
+
+      assertEquals(aEvents.length, 4);
+      assertEquals(aEvents[0].event.type, "container:created");
+      assertEquals(aEvents[1].event.type, "loop:start");
+      assertEquals(aEvents[2].event.type, "loop:end");
+      assertEquals(aEvents[3].event.type, "bundle:extracted");
+
+      assertEquals(bEvents.length, 4);
+      assertEquals(bEvents[0].event.type, "container:created");
+    } finally {
+      await cleanup(logDir);
+    }
+  });
 
   await t.step("AbortSignal cancels remaining items", async () => {
     const logDir = await setupLogDir();

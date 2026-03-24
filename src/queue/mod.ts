@@ -24,3 +24,17 @@ export type {
   QueueReport,
   QueueReportItem,
 } from "./orchestrator.ts";
+
+// TUI
+export { QueueTUI } from "./tui/queue_tui.ts";
+export type { QueueTUIOptions } from "./tui/queue_tui.ts";
+export { StaticRenderer } from "./tui/static_renderer.ts";
+export {
+  applyEvent,
+  initialDisplayState,
+  markBlocked,
+  markCompleted,
+  markFailed,
+  markRunning,
+} from "./tui/state.ts";
+export type { DisplayStatus, ItemDisplayState } from "./tui/state.ts";

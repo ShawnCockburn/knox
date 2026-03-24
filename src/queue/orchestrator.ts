@@ -1,7 +1,7 @@
 import type { KnoxEngineOptions, KnoxOutcome } from "../engine/knox.ts";
 import { Knox } from "../engine/knox.ts";
 import { generateRunId } from "../shared/types.ts";
-import type { RunId } from "../shared/types.ts";
+import type { KnoxEvent, RunId } from "../shared/types.ts";
 import { log } from "../shared/log.ts";
 import type {
   QueueItem,
@@ -25,6 +25,10 @@ export interface OrchestratorOptions {
   verbose?: boolean;
   /** Callback for agent output lines. */
   onLine?: (itemId: string, line: string) => void;
+  /** Callback for structured lifecycle events. */
+  onEvent?: (itemId: string, event: KnoxEvent) => void;
+  /** Suppress the text summary (when TUI handles display). */
+  suppressSummary?: boolean;
   /** Container runtime override (for testing). */
   runtime?: import("../shared/runtime/container_runtime.ts").ContainerRuntime;
   /** Engine factory override (for testing). */
@@ -138,8 +142,10 @@ export class Orchestrator {
     const durationMs = new Date(finishedAt).getTime() -
       new Date(startedAt).getTime();
 
-    // 6. Print summary to stderr
-    this.printSummary(manifest, state, durationMs);
+    // 6. Print summary to stderr (unless TUI handles display)
+    if (!this.options.suppressSummary) {
+      this.printSummary(manifest, state, durationMs);
+    }
 
     // 7. Build report
     return this.buildReport(
@@ -283,6 +289,10 @@ export class Orchestrator {
       this.options.onLine?.(item.id, line);
     };
 
+    const onEvent = (event: KnoxEvent) => {
+      this.options.onEvent?.(item.id, event);
+    };
+
     // Build engine options
     const engineOpts: KnoxEngineOptions = {
       task: item.task,
@@ -298,6 +308,7 @@ export class Orchestrator {
       cpuLimit: cpu,
       memoryLimit: memory,
       onLine,
+      onEvent,
       signal,
       runtime: this.options.runtime,
       branchName: groupBranchName,

@@ -175,6 +175,16 @@
   controls whether Agent output also appears on stderr (new)
 - **Queue State** is updated on every **Item Status** transition, so it reflects
   current progress even if the Orchestrator crashes (new)
+- The **Queue TUI** consumes **Knox Events** via the Orchestrator's `onEvent`
+  callback and Agent output via `onLine`, maintaining **Display State** per item
+  (new)
+- The **Static Renderer** consumes the same callbacks but renders timestamped
+  lines instead of an ANSI table (new)
+- **Display State** is derived from **Knox Events** via a pure reducer
+  (`applyEvent`), making the state machine testable without rendering (new)
+- The **Queue TUI** **Freezes** on stop — one final render, then no more
+  clearing/redrawing — so the frozen table persists in scrollback above the
+  summary (new)
 
 ## Example dialogue
 
@@ -208,6 +218,34 @@
 > **Domain expert:** "Three places. Lifecycle events go to stderr always. Each
 > item's Agent output goes to an **Item Log** in `<queue>.logs/<id>.log`. The
 > **Queue Report** — full JSON with all outcomes — goes to stdout."
+>
+> **Dev:** "What does the user see while the queue is running?"
+> **Domain expert:** "If stderr is a TTY, the **Queue TUI** renders a live status
+> table. Each item gets a row with a **Spinner** for running items, a **Phase**
+> label like 'loop 2/5', and elapsed time. The header shows aggregate counts.
+> With `--verbose`, a **Log Panel** below the table shows interleaved Agent
+> output with color-coded item prefixes. In CI or with `--no-tui`, the **Static
+> Renderer** prints one timestamped line per **Knox Event** instead."
+>
+> **Dev:** "What about Ctrl+C?"
+> **Domain expert:** "The `AbortSignal` fires. Running items emit an `aborted`
+> **Knox Event**. The **Queue TUI** updates their **Display Status** to `aborted`,
+> renders one final frame, then **Freezes**. Remaining pending items become
+> **Blocked** with `blockedBy: 'aborted'`. The summary prints below the frozen
+> frame."
+
+## Queue TUI (new)
+
+| Term | Definition | Aliases to avoid |
+| ---- | ---------- | ---------------- |
+| **Queue TUI** (new) | The live-updating ANSI table rendered to stderr showing real-time Queue progress with spinner, colors, and status counts | Dashboard, UI, display |
+| **Static Renderer** (new) | The non-interactive fallback that prints timestamped `[HH:MM:SS] [item-id] <description>` log lines to stderr, used in non-TTY or `--no-tui` mode | Static fallback, plain renderer, plain mode |
+| **Display State** (new) | The TUI's per-item view model, derived from Knox Events via a pure reducer function (`applyEvent`) | View state, render state |
+| **Display Status** (new) | The TUI's status enum: `pending`, `running`, `completed`, `failed`, `blocked`, `aborted` — a superset of Item Status that adds `aborted` as a first-class visual state and renames `in_progress` to `running` | Render status |
+| **Phase** (new) | A human-readable label describing the current activity of a running item (e.g., "setting up", "loop 2/5", "check failed, retrying", "extracting results") | Step, stage, activity |
+| **Spinner** (new) | The animated braille indicator (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`) cycling at 80ms for running items in the Queue TUI | Loading indicator, progress indicator |
+| **Log Panel** (new) | The scrolling area below the status table showing live Agent output lines in `--verbose` TUI mode, with color-coded item ID prefixes | Output panel, console, verbose panel |
+| **Freeze** (new) | The act of stopping TUI redraws so the final frame persists in terminal scrollback; occurs on normal completion or Ctrl+C | Lock, stop rendering, persist |
 
 ## Flagged ambiguities
 
@@ -269,3 +307,22 @@
   non-failed dependencies — those are simply `pending` with unsatisfied deps.
   Also do not confuse with abort-blocked items (whose `blockedBy` is `"aborted"`
   rather than an item ID).
+- **"in_progress" vs "running"** (flagged, new): The Orchestrator uses
+  `in_progress` as the **Item Status** value, while the **Queue TUI** uses
+  `running` as the **Display Status**. These represent the same lifecycle phase
+  at different layers. Use **In Progress** for the domain/orchestrator layer and
+  **Running** for the display layer. Do not use "running" when referring to
+  orchestrator state, or "in_progress" in TUI code.
+- **"aborted" representation** (flagged, new): The **Display Status** enum has
+  an explicit `aborted` value. The **Item Status** enum does not — abort is
+  represented as `blocked` with `blockedBy: "aborted"`. This asymmetry is
+  intentional: the domain model treats abort as a blocking cause, while the TUI
+  treats it as a distinct visual state worth its own icon and color.
+- **"onEvent" vs "update"** (flagged, new): The Orchestrator exposes
+  `onEvent(itemId, event)` as a callback option. The **Queue TUI** receives this
+  as its `update(itemId, event)` method. Same data flow, different names at
+  different layers. The callback name is `onEvent`; the TUI method is `update`.
+- **"onLine" vs "appendLine"** (flagged, new): Same pattern — the Orchestrator
+  exposes `onLine(itemId, line)`, which maps to the **Queue TUI**'s
+  `appendLine(itemId, line)`. The callback name is `onLine`; the TUI method is
+  `appendLine`.
