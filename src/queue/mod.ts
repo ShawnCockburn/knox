@@ -25,6 +25,15 @@ export type {
   QueueReportItem,
 } from "./orchestrator.ts";
 
+// Queue discovery and multi-queue runner
+export { DirectoryQueueSource, discoverQueues, multiQueueExitCode, runMultiQueue } from "./queue_discovery.ts";
+export type {
+  DiscoveredQueue,
+  MultiQueueReport,
+  MultiQueueRunnerOptions,
+  QueueOutput,
+} from "./queue_discovery.ts";
+
 // TUI
 export { QueueTUI } from "./tui/queue_tui.ts";
 export type { QueueTUIOptions } from "./tui/queue_tui.ts";
