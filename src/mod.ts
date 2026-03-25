@@ -59,3 +59,7 @@ export type {
 export { generateRunId, taskSlug } from "./shared/mod.ts";
 export { resolveAuth } from "./shared/mod.ts";
 export { resolveAllowedIPs } from "./shared/mod.ts";
+
+// Queue output
+export type { QueueOutput, QueueOutputResult } from "./queue/output/queue_output.ts";
+export { BranchQueueOutput } from "./queue/output/branch_queue_output.ts";

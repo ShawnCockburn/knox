@@ -10,6 +10,7 @@ import type {
   QueueState,
 } from "./types.ts";
 import { formatDuration } from "../cli/format.ts";
+import type { QueueOutput, QueueOutputResult } from "./output/queue_output.ts";
 
 /** Options for running the queue orchestrator. */
 export interface OrchestratorOptions {
@@ -40,6 +41,8 @@ export interface OrchestratorOptions {
   engineFactory?: (opts: KnoxEngineOptions) => { run(): Promise<KnoxOutcome> };
   /** Resume from existing state file. */
   resume?: boolean;
+  /** Optional output stage called after all items complete. */
+  queueOutput?: QueueOutput;
 }
 
 /** Final report for the queue run. */
@@ -49,6 +52,8 @@ export interface QueueReport {
   finishedAt: string;
   durationMs: number;
   items: QueueReportItem[];
+  manifest: QueueManifest;
+  outputResult?: QueueOutputResult;
 }
 
 export interface QueueReportItem {
@@ -153,7 +158,7 @@ export class Orchestrator {
     }
 
     // 7. Build report
-    return this.buildReport(
+    const report = this.buildReport(
       manifest,
       state,
       queueRunId,
@@ -161,6 +166,16 @@ export class Orchestrator {
       finishedAt,
       durationMs,
     );
+
+    // 8. Deliver output (if configured)
+    if (this.options.queueOutput) {
+      report.outputResult = await this.options.queueOutput.deliver(
+        report,
+        manifest,
+      );
+    }
+
+    return report;
   }
 
   private async runScheduler(
@@ -481,6 +496,7 @@ export class Orchestrator {
       startedAt,
       finishedAt,
       durationMs,
+      manifest,
       items: manifest.items.map((item) => {
         const s = state.items[item.id];
         return {
