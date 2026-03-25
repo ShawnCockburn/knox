@@ -45,6 +45,8 @@ export { generateRunId, taskSlug } from "./types.ts";
 // Pre-container functions
 export { resolveAuth } from "./knox/mod.ts";
 export { resolveAllowedIPs } from "./knox/mod.ts";
+export { resolveConfig } from "./knox/mod.ts";
+export type { KnoxProjectConfig, ResolvedConfig } from "./knox/mod.ts";
 
 // Logger
 export { log } from "./log.ts";
