@@ -15,6 +15,16 @@ import {
 } from "../queue/orchestrator.ts";
 import { StaticRenderer } from "../queue/tui/static_renderer.ts";
 import { QueueTUI } from "../queue/tui/queue_tui.ts";
+import { resolveConfig } from "../queue/config.ts";
+import { DirectoryQueueSource } from "../queue/directory_queue_source.ts";
+import { discoverQueues } from "../queue/queue_discovery.ts";
+import {
+  BranchQueueOutput,
+  createSinglePR,
+  PullRequestQueueOutput,
+} from "../queue/output.ts";
+import type { QueueOutput } from "../queue/output.ts";
+import { MultiQueueRunner } from "../queue/multi_queue_runner.ts";
 
 const USAGE = `Usage: knox <command> [options]
 
@@ -37,17 +47,20 @@ Options:
   --prompt <path>     Custom prompt file
   --cpu <limit>       CPU limit (e.g., "2")
   --memory <limit>    Memory limit (e.g., "4g")
+  --output <strategy> Output strategy: "branch" or "pr" (overrides .knox/config.yaml)
   --skip-preflight    Skip preflight checks
   --verbose           Show debug-level messages
   --quiet             Suppress info messages (show warnings and errors only)`;
 
-const QUEUE_USAGE = `Usage: knox queue --file <path> [options]
+const QUEUE_USAGE = `Usage: knox queue [options]
 
 Options:
-  --file <path>       Queue file path (required)
+  --file <path>       Queue YAML file (existing behavior)
+  --name <name>       Run a specific queue from .knox/queues/<name>/
+  --output <strategy> Output strategy: "branch" or "pr" (overrides .knox/config.yaml)
   --resume            Resume from last checkpoint
   --verbose           Show debug-level messages
-  --no-tui            Disable live TUI (uses static log lines)`;
+  --no-tui            Disable live TUI`;
 
 // Detect subcommand
 const subcommand = Deno.args[0];
@@ -60,144 +73,301 @@ const effectiveArgs = isFlag ? Deno.args : subcommandArgs;
 
 if (effectiveCommand === "queue") {
   const flags = parseArgs(effectiveArgs, {
-    string: ["file"],
-    boolean: ["resume", "verbose", "no-tui"],
+    string: ["file", "name", "output"],
+    boolean: ["resume", "verbose", "no-tui", "help"],
   });
+
+  if (flags.help) {
+    console.error(QUEUE_USAGE);
+    Deno.exit(0);
+  }
 
   if (flags.verbose) {
     log.setLevel("debug");
   }
 
-  if (!flags.file) {
-    console.error("Error: --file is required for knox queue");
-    console.error("");
-    console.error(QUEUE_USAGE);
-    Deno.exit(2);
-  }
+  const projectDir = resolve(".");
 
-  // Validate file exists
-  const queueFilePath = resolve(flags.file as string);
-  try {
-    await Deno.stat(queueFilePath);
-  } catch {
-    console.error(`Error: queue file not found: ${queueFilePath}`);
-    Deno.exit(2);
-  }
+  // Load project config and resolve effective output strategy
+  const config = await resolveConfig(projectDir);
+  const outputStrategy = (flags.output as string | undefined) ??
+    config.output ??
+    "branch";
 
-  const runtime = new DockerRuntime();
+  const queueOutput: QueueOutput = outputStrategy === "pr"
+    ? new PullRequestQueueOutput({
+      draft: config.pr?.draft,
+      base: config.pr?.base,
+    })
+    : new BranchQueueOutput();
 
-  try {
-    // 1. Load manifest to check for setup commands
-    const source = new FileQueueSource(queueFilePath);
-    const loadResult = await source.load();
-    if (!loadResult.ok) {
-      for (const err of loadResult.errors) {
-        log.error(err.message);
-      }
+  const isTTY = Deno.stderr.isTerminal();
+  const isVerbose = flags.verbose as boolean;
+  const useTUI = isTTY && !flags["no-tui"];
+
+  if (flags.file) {
+    // ── File mode (existing behaviour) ──────────────────────────────────────
+    const queueFilePath = resolve(flags.file as string);
+    try {
+      await Deno.stat(queueFilePath);
+    } catch {
+      console.error(`Error: queue file not found: ${queueFilePath}`);
       Deno.exit(2);
     }
-    const manifest = loadResult.manifest;
 
-    // 2. Resolve shared resources once
-    log.info("Resolving shared resources...");
+    const runtime = new DockerRuntime();
 
-    // Build/cache images (use setup from defaults if present)
-    const imageManager = new ImageManager(runtime);
-    const image = await imageManager.ensureSetupImage(
-      manifest.defaults?.setup,
-    );
+    try {
+      const source = new FileQueueSource(queueFilePath);
+      const loadResult = await source.load();
+      if (!loadResult.ok) {
+        for (const err of loadResult.errors) {
+          log.error(err.message);
+        }
+        Deno.exit(2);
+      }
+      const manifest = loadResult.manifest;
 
-    // Resolve authentication
-    const resolvedEnvVars = await resolveAuth([]);
+      log.info("Resolving shared resources...");
+      const imageManager = new ImageManager(runtime);
+      const image = await imageManager.ensureSetupImage(
+        manifest.defaults?.setup,
+      );
+      const resolvedEnvVars = await resolveAuth([]);
+      const allowedIPs = await resolveAllowedIPs();
 
-    // Resolve Anthropic API IPs
-    const allowedIPs = await resolveAllowedIPs();
+      const queueName = basename(queueFilePath).replace(/\.ya?ml$/, "");
+      const logDir = resolve(dirname(queueFilePath), `${queueName}.logs`);
 
-    // 3. Derive log directory from queue file path
-    const queueName = basename(queueFilePath).replace(/\.ya?ml$/, "");
-    const logDir = resolve(dirname(queueFilePath), `${queueName}.logs`);
+      const itemIds = manifest.items.map((i) => i.id);
+      let renderer: StaticRenderer | QueueTUI;
+      if (useTUI) {
+        renderer = new QueueTUI(itemIds, {
+          verbose: isVerbose,
+          queueName,
+        });
+      } else {
+        renderer = new StaticRenderer({ verbose: isVerbose });
+      }
 
-    // 4. Determine TUI mode
-    const isTTY = Deno.stderr.isTerminal();
-    const useTUI = isTTY && !flags["no-tui"];
-    const isVerbose = flags.verbose as boolean;
-
-    // 5. Create renderer
-    const itemIds = manifest.items.map((i) => i.id);
-    let renderer: StaticRenderer | QueueTUI;
-
-    if (useTUI) {
-      renderer = new QueueTUI(itemIds, {
-        verbose: isVerbose,
-        queueName: queueName,
+      const controller = new AbortController();
+      Deno.addSignalListener("SIGINT", () => {
+        controller.abort();
+        renderer.setAborting();
+        if (!useTUI) {
+          log.info(`\nInterrupted. Aborting queue...`);
+        }
       });
-    } else {
-      renderer = new StaticRenderer({ verbose: isVerbose });
+
+      if (useTUI) log.mute();
+      renderer.start();
+
+      const orchestrator = new Orchestrator({
+        source,
+        image,
+        envVars: resolvedEnvVars,
+        allowedIPs,
+        dir: projectDir,
+        logDir,
+        signal: controller.signal,
+        resume: flags.resume as boolean,
+        verbose: isVerbose,
+        suppressSummary: true,
+        runtime,
+        onLine: (itemId, line) => renderer.appendLine(itemId, line),
+        onEvent: (itemId, event) => renderer.update(itemId, event),
+        onItemRunning: (itemId) => renderer.markItemRunning(itemId),
+        onItemCompleted: (itemId, branch) =>
+          renderer.markItemCompleted(itemId, branch),
+        onItemFailed: (itemId, error) => renderer.markItemFailed(itemId, error),
+        onItemBlocked: (itemId, blockedBy) =>
+          renderer.markItemBlocked(itemId, blockedBy),
+      });
+
+      const report = await orchestrator.run();
+      renderer.stop();
+      if (useTUI) log.unmute();
+
+      console.error(renderer.formatSummary());
+
+      // Run post-queue output handler
+      await queueOutput.onQueueComplete(report);
+
+      console.log(JSON.stringify(report, null, 2));
+
+      const allCompleted = report.items.every((i) => i.status === "completed");
+      Deno.exit(allCompleted ? 0 : 1);
+    } catch (e) {
+      if (e instanceof OrchestratorValidationError) {
+        for (const err of e.errors) {
+          log.error(err.message);
+        }
+        Deno.exit(2);
+      }
+      const msg = e instanceof Error ? e.message : String(e);
+      log.error(`Fatal: ${msg}`);
+      Deno.exit(3);
+    }
+  } else if (flags.name) {
+    // ── Named queue mode ─────────────────────────────────────────────────────
+    const queueDir = resolve(projectDir, ".knox", "queues", flags.name as string);
+    try {
+      await Deno.stat(queueDir);
+    } catch {
+      console.error(
+        `Error: queue not found: .knox/queues/${flags.name}/`,
+      );
+      Deno.exit(2);
     }
 
-    // 6. Wire SIGINT to AbortController + TUI abort feedback
+    const runtime = new DockerRuntime();
+
+    try {
+      const source = new DirectoryQueueSource(queueDir);
+      const loadResult = await source.load();
+      if (!loadResult.ok) {
+        for (const err of loadResult.errors) {
+          log.error(err.message);
+        }
+        Deno.exit(2);
+      }
+      const manifest = loadResult.manifest;
+
+      log.info("Resolving shared resources...");
+      const imageManager = new ImageManager(runtime);
+      const image = await imageManager.ensureSetupImage(
+        manifest.defaults?.setup,
+      );
+      const resolvedEnvVars = await resolveAuth([]);
+      const allowedIPs = await resolveAllowedIPs();
+
+      const queueName = flags.name as string;
+      const logDir = resolve(queueDir, ".logs");
+
+      const itemIds = manifest.items.map((i) => i.id);
+      let renderer: StaticRenderer | QueueTUI;
+      if (useTUI) {
+        renderer = new QueueTUI(itemIds, { verbose: isVerbose, queueName });
+      } else {
+        renderer = new StaticRenderer({ verbose: isVerbose });
+      }
+
+      const controller = new AbortController();
+      Deno.addSignalListener("SIGINT", () => {
+        controller.abort();
+        renderer.setAborting();
+        if (!useTUI) {
+          log.info(`\nInterrupted. Aborting queue...`);
+        }
+      });
+
+      if (useTUI) log.mute();
+      renderer.start();
+
+      const orchestrator = new Orchestrator({
+        source,
+        image,
+        envVars: resolvedEnvVars,
+        allowedIPs,
+        dir: projectDir,
+        logDir,
+        signal: controller.signal,
+        resume: flags.resume as boolean,
+        verbose: isVerbose,
+        suppressSummary: true,
+        runtime,
+        onLine: (itemId, line) => renderer.appendLine(itemId, line),
+        onEvent: (itemId, event) => renderer.update(itemId, event),
+        onItemRunning: (itemId) => renderer.markItemRunning(itemId),
+        onItemCompleted: (itemId, branch) =>
+          renderer.markItemCompleted(itemId, branch),
+        onItemFailed: (itemId, error) => renderer.markItemFailed(itemId, error),
+        onItemBlocked: (itemId, blockedBy) =>
+          renderer.markItemBlocked(itemId, blockedBy),
+      });
+
+      const report = await orchestrator.run();
+      renderer.stop();
+      if (useTUI) log.unmute();
+
+      console.error(renderer.formatSummary());
+      await queueOutput.onQueueComplete(report);
+      console.log(JSON.stringify(report, null, 2));
+
+      const allCompleted = report.items.every((i) => i.status === "completed");
+      Deno.exit(allCompleted ? 0 : 1);
+    } catch (e) {
+      if (e instanceof OrchestratorValidationError) {
+        for (const err of e.errors) {
+          log.error(err.message);
+        }
+        Deno.exit(2);
+      }
+      const msg = e instanceof Error ? e.message : String(e);
+      log.error(`Fatal: ${msg}`);
+      Deno.exit(3);
+    }
+  } else {
+    // ── Discovery mode ───────────────────────────────────────────────────────
+    const discovered = await discoverQueues(projectDir);
+    if (discovered.length === 0) {
+      console.error(
+        `Error: no queues found in ${projectDir}/.knox/queues/`,
+      );
+      console.error(
+        "Create a queue directory with .md task files, or use --file or --name.",
+      );
+      Deno.exit(2);
+    }
+
+    const queueDirs = discovered.map((q) => q.path);
+    log.info(`Discovered ${discovered.length} queue(s).`);
+
+    const runtime = new DockerRuntime();
+    log.info("Resolving shared resources...");
+    const imageManager = new ImageManager(runtime);
+    const image = await imageManager.ensureSetupImage(undefined);
+    const resolvedEnvVars = await resolveAuth([]);
+    const allowedIPs = await resolveAllowedIPs();
+
     const controller = new AbortController();
     Deno.addSignalListener("SIGINT", () => {
       controller.abort();
-      renderer.setAborting();
       if (!useTUI) {
-        log.info(`\nInterrupted. Aborting queue...`);
+        log.info(`\nInterrupted. Aborting queues...`);
       }
     });
 
-    // Mute logger during TUI to prevent stderr interleaving
-    if (useTUI) log.mute();
-
-    renderer.start();
-
-    // 7. Run orchestrator
-    const orchestrator = new Orchestrator({
-      source,
+    const runner = new MultiQueueRunner({
+      queueDirs,
       image,
       envVars: resolvedEnvVars,
       allowedIPs,
-      dir: resolve("."),
-      logDir,
+      dir: projectDir,
       signal: controller.signal,
       resume: flags.resume as boolean,
       verbose: isVerbose,
-      suppressSummary: true, // summary printed by renderer below
+      useTUI,
       runtime,
-      onLine: (itemId, line) => renderer.appendLine(itemId, line),
-      onEvent: (itemId, event) => renderer.update(itemId, event),
-      onItemRunning: (itemId) => renderer.markItemRunning(itemId),
-      onItemCompleted: (itemId, branch) =>
-        renderer.markItemCompleted(itemId, branch),
-      onItemFailed: (itemId, error) => renderer.markItemFailed(itemId, error),
-      onItemBlocked: (itemId, blockedBy) =>
-        renderer.markItemBlocked(itemId, blockedBy),
+      output: queueOutput,
     });
 
-    const report = await orchestrator.run();
-    renderer.stop();
+    try {
+      const multiReport = await runner.run();
+      MultiQueueRunner.printCombinedSummary(multiReport);
 
-    // Unmute logger after TUI stops
-    if (useTUI) log.unmute();
+      const allReports = multiReport.queues.map((q) => q.report);
+      console.log(JSON.stringify(allReports, null, 2));
 
-    // 8. Print summary to stderr
-    console.error(renderer.formatSummary());
-
-    // 9. Print JSON report to stdout
-    console.log(JSON.stringify(report, null, 2));
-
-    // 7. Exit code
-    const allCompleted = report.items.every((i) => i.status === "completed");
-    Deno.exit(allCompleted ? 0 : 1);
-  } catch (e) {
-    if (e instanceof OrchestratorValidationError) {
-      for (const err of e.errors) {
-        log.error(err.message);
-      }
-      Deno.exit(2);
+      const allCompleted = allReports.every((r) =>
+        r.items.every((i) => i.status === "completed")
+      );
+      Deno.exit(allCompleted ? 0 : 1);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      log.error(`Fatal: ${msg}`);
+      Deno.exit(3);
     }
-    const msg = e instanceof Error ? e.message : String(e);
-    log.error(`Fatal: ${msg}`);
-    Deno.exit(3);
   }
 } else if (effectiveCommand === "run" || effectiveCommand === null) {
   // "knox run" or legacy "knox --task ..."
@@ -218,6 +388,7 @@ if (effectiveCommand === "queue") {
       "max-loops",
       "cpu",
       "memory",
+      "output",
     ],
     boolean: ["verbose", "quiet", "skip-preflight", "help"],
     collect: ["env"],
@@ -259,6 +430,12 @@ if (effectiveCommand === "queue") {
 
   const dir = resolve(flags.dir as string);
   const runtime = new DockerRuntime();
+
+  // Load project config and resolve effective output strategy
+  const config = await resolveConfig(dir);
+  const outputStrategy = (flags.output as string | undefined) ??
+    config.output ??
+    "branch";
 
   try {
     // Pre-container setup (CLI responsibility)
@@ -333,6 +510,20 @@ if (effectiveCommand === "queue") {
 
     if (outcome.ok) {
       log.always(formatSummary(outcome.result));
+
+      // Create PR if output strategy is "pr"
+      if (
+        outputStrategy === "pr" &&
+        outcome.result.sink.strategy === "host-git" &&
+        outcome.result.sink.branchName
+      ) {
+        await createSinglePR(
+          outcome.result.sink.branchName,
+          flags.task as string,
+          { draft: config.pr?.draft, base: config.pr?.base },
+        );
+      }
+
       if (outcome.result.aborted) {
         Deno.exit(130);
       }
