@@ -32,6 +32,14 @@ export type {
 export type { QueueOutput, QueueOutputResult } from "./output/queue_output.ts";
 export { BranchQueueOutput } from "./output/branch_queue_output.ts";
 
+// Queue discovery and multi-queue runner
+export { discoverQueues, multiQueueExitCode, runMultiQueue } from "./queue_discovery.ts";
+export type {
+  DiscoveredQueue,
+  MultiQueueReport,
+  MultiQueueRunnerOptions,
+} from "./queue_discovery.ts";
+
 // TUI
 export { QueueTUI } from "./tui/queue_tui.ts";
 export type { QueueTUIOptions } from "./tui/queue_tui.ts";
