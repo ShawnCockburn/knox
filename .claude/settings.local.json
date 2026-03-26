@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker --version)",
+      "Bash(deno info:*)",
+      "Bash(deno check:*)",
+      "Bash(deno task:*)",
+      "Bash(deno lint:*)",
+      "Bash(deno test:*)",
+      "Bash(find /Users/shawn/Projects/knox -path */fixtures/*.yaml -o -path */fixtures/*.yml)",
+      "Bash(grep -E \"^/Users/shawn/Projects/knox/[^/]+$|^/Users/shawn/Projects/knox/src/[^/]+$\")",
+      "Bash(grep -E \"\\\\.\\(ts|yaml|yml\\)$\")",
+      "Bash(wc:*)"
+    ]
+  }
+}
