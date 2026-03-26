@@ -98,8 +98,6 @@
 | **Queue** (new) | A YAML manifest describing multiple Tasks to be executed, with optional dependencies, groups, concurrency, and defaults | Batch, job list, task list |
 | **Queue Item** (new) | A single entry in a Queue, consisting of an `id`, a `task` description, and optional overrides for model, setup, check, env, etc. | Task (when referring to the queue entry rather than the work description), job |
 | **Queue Defaults** (new) | Queue-level configuration values (model, maxLoops, env, etc.) that merge with per-item overrides; item values take precedence | Global config, base config |
-| **Queue Source** (new) | Interface for loading a Queue and persisting Queue State; the data layer for the Orchestrator | Queue loader, queue provider |
-| **File Queue Source** (new) | YAML-file-backed implementation of Queue Source; reads from `<name>.yaml`, writes state to `<name>.state.yaml` | YAML loader |
 | **Queue State** (new) | A persistent record of a Queue Run's progress, stored in a `.state.yaml` file alongside the Queue file | State file (ambiguous with Progress File), checkpoint |
 | **Item Status** (new) | The lifecycle state of a Queue Item: `pending`, `in_progress`, `completed`, `failed`, or `blocked` | Status, state (too generic) |
 | **Queue Run ID** (new) | An 8-hex-character identifier for an entire Queue execution, distinct from per-item Run IDs | Run ID (ambiguous — see flagged ambiguities) |
@@ -185,15 +183,50 @@
 - The **Queue TUI** **Freezes** on stop — one final render, then no more
   clearing/redrawing — so the frozen table persists in scrollback above the
   summary (new)
+- A **Directory Queue Source** reads `.md` files from a directory, parsing each
+  through the **Markdown Task Parser**; optional `_defaults.yaml` provides
+  **Queue Defaults** (new)
+- **Frontmatter** fields map to **Queue Item** overrides; the **Task Body**
+  becomes the `task` property (new)
+- The filename (minus `.md`) becomes the **Queue Item** `id` (new)
+- A **Queue Output** runs after all items complete: **Branch Queue Output** is a
+  no-op, **Pull Request Queue Output** creates GitHub PRs via `gh` CLI (new)
+- **Queue Discovery** scans `.knox/queues/` and produces **Discovered Queues**
+  (new)
+- The **Multi-Queue Runner** iterates **Discovered Queues** sequentially, each
+  getting its own **Orchestrator** instance, renderer, and **Queue Output**
+  callback (new)
+- **Knox Config** is loaded from `.knox/config.yaml`; **Output Strategy** can be
+  overridden by CLI `--output` flag (flag wins over config) (new)
+- The CLI has three queue modes: `--file` (File Queue Source), `--name`
+  (Directory Queue Source for a specific queue), and discovery mode (Multi-Queue
+  Runner over all Discovered Queues) (new)
 
-## Example dialogue
+## Example dialogue (updated)
 
-> **Dev:** "How does queue mode differ from a single `knox run`?"
-> **Domain expert:** "A single `knox run` invokes **Knox** once — one **Task**,
-> one **Container**, one **Result Branch**. Queue mode loads a **Queue** manifest
-> and runs an **Orchestrator** that schedules multiple **Queue Items** against the
-> same engine. Shared resources — **Image**, **Credentials**, **Allowed IPs** —
-> are resolved once for the whole queue."
+> **Dev:** "How do I define a queue? I see both YAML files and Markdown
+> directories."
+> **Domain expert:** "Two **Queue Sources**. A **File Queue Source** reads a
+> single YAML file — `knox queue --file tasks.yaml`. A **Directory Queue Source**
+> reads a directory of `.md` files — each file becomes a **Queue Item**. The
+> filename minus `.md` is the item `id`, the **Frontmatter** holds overrides like
+> `dependsOn` or `group`, and the **Task Body** is the task description. Put an
+> optional `_defaults.yaml` in the directory for **Queue Defaults**."
+>
+> **Dev:** "What if I have multiple queues?"
+> **Domain expert:** "Put directories under `.knox/queues/`. When you run `knox
+> queue` with no flags, **Queue Discovery** scans that path and finds all
+> **Discovered Queues** — any subdirectory with at least one `.md` file. The
+> **Multi-Queue Runner** executes them sequentially, each with its own
+> **Orchestrator**. Or use `--name auth-refactor` to target a specific one."
+>
+> **Dev:** "How does output strategy work?"
+> **Domain expert:** "**Knox Config** lives at `.knox/config.yaml`. Set `output:
+> pr` to have Knox create GitHub PRs after completion. The **Output Strategy** —
+> `branch` or `pr` — can also be set via `--output` on the CLI, which takes
+> precedence. In queue mode, **Branch Queue Output** is a no-op since branches
+> already exist. **Pull Request Queue Output** creates a PR per completed item
+> via `gh`."
 >
 > **Dev:** "What happens when a Queue Item fails?"
 > **Domain expert:** "The **Orchestrator** marks it `failed` and walks the **DAG**
@@ -201,31 +234,17 @@
 > keep running. So in a diamond — A feeds B and C, both feed D — if B fails, D is
 > **Blocked** but C still runs."
 >
-> **Dev:** "What about groups? I see items with the same `group` field."
+> **Dev:** "What about groups?"
 > **Domain expert:** "A **Group** is a linear chain. All items share one **Group
 > Branch** named `knox/<group>-<Queue Run ID>`. The first item clones from HEAD.
 > Each subsequent item uses **Chained Execution** — it clones from the **Group
-> Branch**, so it sees its predecessor's commits. The **Result Sink** stacks
-> commits onto the same branch."
->
-> **Dev:** "Can I resume a partially-completed queue?"
-> **Domain expert:** "Yes. `--resume` reads the existing **Queue State** file.
-> `completed` items are skipped. `failed` and **Blocked** items are reset to
-> `pending`. The **Queue Run ID** is preserved so **Group Branches** from the
-> previous run are continued, not recreated."
->
-> **Dev:** "Where do I find what happened?"
-> **Domain expert:** "Three places. Lifecycle events go to stderr always. Each
-> item's Agent output goes to an **Item Log** in `<queue>.logs/<id>.log`. The
-> **Queue Report** — full JSON with all outcomes — goes to stdout."
+> Branch**, so it sees its predecessor's commits."
 >
 > **Dev:** "What does the user see while the queue is running?"
 > **Domain expert:** "If stderr is a TTY, the **Queue TUI** renders a live status
 > table. Each item gets a row with a **Spinner** for running items, a **Phase**
-> label like 'loop 2/5', and elapsed time. The header shows aggregate counts.
-> With `--verbose`, a **Log Panel** below the table shows interleaved Agent
-> output with color-coded item prefixes. In CI or with `--no-tui`, the **Static
-> Renderer** prints one timestamped line per **Knox Event** instead."
+> label like 'loop 2/5', and elapsed time. In CI or with `--no-tui`, the **Static
+> Renderer** prints timestamped lines per **Knox Event** instead."
 >
 > **Dev:** "What about Ctrl+C?"
 > **Domain expert:** "The `AbortSignal` fires. Running items emit an `aborted`
@@ -233,6 +252,41 @@
 > renders one final frame, then **Freezes**. Remaining pending items become
 > **Blocked** with `blockedBy: 'aborted'`. The summary prints below the frozen
 > frame."
+
+## Queue Ingest (new)
+
+| Term | Definition | Aliases to avoid |
+| ---- | ---------- | ---------------- |
+| **Queue Source** (updated) | Interface for loading a Queue and persisting Queue State; the data layer for the Orchestrator — has two implementations: **File Queue Source** and **Directory Queue Source** | Queue loader, queue provider |
+| **File Queue Source** (updated) | YAML-file-backed implementation of Queue Source; reads from `<name>.yaml`, writes state to `<name>.state.yaml` | YAML loader |
+| **Directory Queue Source** (new) | Markdown-directory-backed implementation of Queue Source; reads `.md` files from a directory, optional `_defaults.yaml` for Queue Defaults, state to `.state.yaml` inside the directory | Markdown queue source, directory loader |
+| **Markdown Task Parser** (new) | Pure function that parses a single Markdown task file into a Queue Item or validation errors | Task parser, markdown parser |
+| **Frontmatter** (new) | YAML section at the start of a Markdown task file (between `---` delimiters) containing optional Queue Item overrides: `dependsOn`, `model`, `setup`, `check`, `group`, `maxLoops`, `env`, `cpu`, `memory` | YAML header, metadata |
+| **Task Body** (new) | The Markdown content after Frontmatter; becomes the Queue Item's task description | Task content, body text |
+
+## Queue Output (new)
+
+| Term | Definition | Aliases to avoid |
+| ---- | ---------- | ---------------- |
+| **Queue Output** (new) | Interface called after all Queue Items complete to deliver results; method `onQueueComplete(report)` | Output handler, post-queue handler |
+| **Branch Queue Output** (new) | No-op Queue Output implementation; Result Branches already exist from per-item Result Sinks, so no additional delivery is needed | Default output, branch mode |
+| **Pull Request Queue Output** (new) | Queue Output implementation that creates a GitHub PR (via `gh` CLI) for each completed Queue Item's branch | PR output, GitHub output |
+
+## Queue Discovery & Multi-Queue (new)
+
+| Term | Definition | Aliases to avoid |
+| ---- | ---------- | ---------------- |
+| **Queue Discovery** (new) | Scanning `.knox/queues/` for subdirectories containing at least one `.md` task file (excluding `_`-prefixed files); returns sorted alphabetically | Queue scanning, queue detection |
+| **Discovered Queue** (new) | A queue directory found under `.knox/queues/` with a `name` (directory name) and `path` (absolute path) | Found queue, queue reference |
+| **Multi-Queue Runner** (new) | Component that runs multiple Discovered Queues sequentially, each with its own Orchestrator, renderer, and Queue Output callback | Batch runner, queue runner (ambiguous with Orchestrator) |
+| **Multi-Queue Report** (new) | Aggregated result containing an array of `{ name, report }` entries — one per queue executed | Combined report, summary |
+
+## Project Configuration (new)
+
+| Term | Definition | Aliases to avoid |
+| ---- | ---------- | ---------------- |
+| **Knox Config** (new) | Project-level configuration loaded from `.knox/config.yaml`; currently defines `output` strategy and `pr` options | Project config, config file (too generic) |
+| **Output Strategy** (new) | Enum value `"branch"` or `"pr"` determining how Knox results are delivered; configurable via `.knox/config.yaml` or `--output` CLI flag (flag takes precedence) | Output type, delivery mode |
 
 ## Queue TUI (new)
 
@@ -326,3 +380,19 @@
   exposes `onLine(itemId, line)`, which maps to the **Queue TUI**'s
   `appendLine(itemId, line)`. The callback name is `onLine`; the TUI method is
   `appendLine`.
+- **"output"** (flagged, new) has three distinct meanings: **Queue Output**
+  (interface for post-queue delivery), **Output Strategy** (the `"branch"` or
+  `"pr"` enum from Knox Config), and the `--output` CLI flag. The interface
+  decides *how* to deliver; the strategy decides *what* to deliver. Always
+  qualify: "Queue Output" for the interface, "Output Strategy" for the config
+  value.
+- **"queue source" vs "source provider"** (flagged, new): Both are "source"
+  abstractions at different layers. **Queue Source** loads queue manifests
+  (data layer). **Source Provider** prepares git source for containers (engine
+  layer). The word "source" alone is ambiguous — always use the full term.
+  (Moved from inline note to explicit flag for visibility.)
+- **"queue" CLI modes** (flagged, new): The `knox queue` command has three
+  mutually exclusive modes: `--file` (File Queue Source), `--name` (Directory
+  Queue Source for a named queue), and bare (Queue Discovery + Multi-Queue
+  Runner). These are not interchangeable — each resolves the Queue Source
+  differently.
