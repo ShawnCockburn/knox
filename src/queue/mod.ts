@@ -28,6 +28,10 @@ export type {
   QueueReportItem,
 } from "./orchestrator.ts";
 
+// Output
+export type { QueueOutput, QueueOutputResult } from "./output/queue_output.ts";
+export { BranchQueueOutput } from "./output/branch_queue_output.ts";
+
 // TUI
 export { QueueTUI } from "./tui/queue_tui.ts";
 export type { QueueTUIOptions } from "./tui/queue_tui.ts";

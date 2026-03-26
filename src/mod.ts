@@ -61,3 +61,7 @@ export { resolveAuth } from "./shared/mod.ts";
 export { resolveAllowedIPs } from "./shared/mod.ts";
 export { resolveConfig } from "./shared/mod.ts";
 export type { KnoxProjectConfig, ResolvedConfig } from "./shared/mod.ts";
+
+// Queue output
+export type { QueueOutput, QueueOutputResult } from "./queue/output/queue_output.ts";
+export { BranchQueueOutput } from "./queue/output/branch_queue_output.ts";
