@@ -59,3 +59,5 @@ export type {
 export { generateRunId, taskSlug } from "./shared/mod.ts";
 export { resolveAuth } from "./shared/mod.ts";
 export { resolveAllowedIPs } from "./shared/mod.ts";
+export { resolveConfig } from "./shared/mod.ts";
+export type { KnoxProjectConfig, ResolvedConfig } from "./shared/mod.ts";
