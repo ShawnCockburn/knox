@@ -14,6 +14,9 @@ export type {
 // File-based queue source
 export { FileQueueSource } from "./file_queue_source.ts";
 
+// Directory-based queue source
+export { DirectoryQueueSource } from "./directory_queue_source.ts";
+
 // Validation
 export { validateManifest } from "./validation.ts";
 
