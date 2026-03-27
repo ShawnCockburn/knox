@@ -8,14 +8,23 @@ export type ItemStatus =
   | "failed"
   | "blocked";
 
+/** Feature spec: bare string ("python") or name:version ("python:3.12") or object ({python: "3.12"}). */
+export type FeatureConfigEntry = string | Record<string, string>;
+
+/** Environment configuration for a queue item or defaults. */
+export interface EnvironmentConfig {
+  readonly features?: FeatureConfigEntry[];
+  readonly prepare?: string;
+  readonly image?: string;
+}
+
 /** A single item in the queue manifest. */
-export interface QueueItem {
+export interface QueueItem extends EnvironmentConfig {
   readonly id: string;
   readonly task: string;
   readonly group?: string;
   readonly dependsOn?: string[];
   readonly model?: string;
-  readonly setup?: string;
   readonly check?: string;
   readonly maxLoops?: number;
   readonly env?: string[];
@@ -25,9 +34,8 @@ export interface QueueItem {
 }
 
 /** Queue-level defaults that merge with per-item overrides. */
-export interface QueueDefaults {
+export interface QueueDefaults extends EnvironmentConfig {
   readonly model?: string;
-  readonly setup?: string;
   readonly check?: string;
   readonly maxLoops?: number;
   readonly env?: string[];

@@ -5,7 +5,9 @@ import type { QueueItem, ValidationError } from "./types.ts";
 const KNOWN_FIELDS = new Set([
   "dependsOn",
   "model",
-  "setup",
+  "features",
+  "prepare",
+  "image",
   "check",
   "group",
   "maxLoops",
@@ -13,6 +15,12 @@ const KNOWN_FIELDS = new Set([
   "cpu",
   "memory",
 ]);
+
+/** Fields that have been removed with migration instructions. */
+const REMOVED_FIELDS: Record<string, string> = {
+  setup:
+    "The `setup` field has been renamed to `prepare`. Please update your configuration.",
+};
 
 /** Result type for parseMarkdownTask. */
 export type ParseResult =
@@ -79,9 +87,11 @@ export function parseMarkdownTask(
     }
   }
 
-  // Warn about unknown frontmatter fields
+  // Check for removed fields and warn about unknown fields
   for (const key of Object.keys(fm)) {
-    if (!KNOWN_FIELDS.has(key)) {
+    if (key in REMOVED_FIELDS) {
+      errors.push({ field: key, message: REMOVED_FIELDS[key] });
+    } else if (!KNOWN_FIELDS.has(key)) {
       warnings.push({ field: key, message: `Unknown frontmatter field: '${key}'` });
     }
   }
@@ -111,7 +121,9 @@ export function parseMarkdownTask(
     task,
     ...(dependsOn !== undefined && { dependsOn }),
     ...(fm.model !== undefined && { model: fm.model }),
-    ...(fm.setup !== undefined && { setup: fm.setup }),
+    ...(fm.features !== undefined && { features: fm.features }),
+    ...(fm.prepare !== undefined && { prepare: fm.prepare }),
+    ...(fm.image !== undefined && { image: fm.image }),
     ...(fm.check !== undefined && { check: fm.check }),
     ...(fm.group !== undefined && { group: fm.group }),
     ...(fm.maxLoops !== undefined && { maxLoops: fm.maxLoops }),

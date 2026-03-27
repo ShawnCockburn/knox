@@ -4,6 +4,7 @@ import { generateRunId } from "../shared/types.ts";
 import type { KnoxEvent, RunId } from "../shared/types.ts";
 import { log } from "../shared/log.ts";
 import type {
+  EnvironmentConfig,
   QueueItem,
   QueueManifest,
   QueueSource,
@@ -12,11 +13,19 @@ import type {
 import { formatDuration } from "../cli/format.ts";
 import type { QueueOutput, QueueOutputResult } from "./output/queue_output.ts";
 
+/**
+ * Resolves environment config to a Docker image ID.
+ * Used by the orchestrator for per-item image resolution.
+ */
+export type ImageResolver = (env: EnvironmentConfig) => Promise<string>;
+
 /** Options for running the queue orchestrator. */
 export interface OrchestratorOptions {
   source: QueueSource;
-  /** Pre-resolved values from CLI (shared across all items). */
+  /** Pre-resolved default image (used when item has no environment config). */
   image: string;
+  /** Resolves per-item environment config to a Docker image. */
+  imageResolver?: ImageResolver;
   envVars: string[];
   allowedIPs: string[];
   dir: string;
@@ -285,6 +294,20 @@ export class Orchestrator {
       customPrompt = await Deno.readTextFile(promptPath);
     }
 
+    // Resolve per-item environment → image
+    // If item declares features/prepare/image, it replaces defaults entirely (no merge)
+    const itemHasEnv = item.features !== undefined ||
+      item.prepare !== undefined ||
+      item.image !== undefined;
+    let itemImage = this.options.image; // default
+    if (itemHasEnv && this.options.imageResolver) {
+      itemImage = await this.options.imageResolver({
+        features: item.features,
+        prepare: item.prepare,
+        image: item.image,
+      });
+    }
+
     // Determine run ID
     const runId: RunId = generateRunId();
 
@@ -319,7 +342,7 @@ export class Orchestrator {
     const engineOpts: KnoxEngineOptions = {
       task: item.task,
       dir: this.options.dir,
-      image: this.options.image,
+      image: itemImage,
       envVars: [...this.options.envVars, ...env],
       allowedIPs: this.options.allowedIPs,
       runId,

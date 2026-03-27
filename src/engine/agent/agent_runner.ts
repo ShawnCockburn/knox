@@ -7,6 +7,7 @@ const SENTINEL = "KNOX_COMPLETE";
 const PROMPT_PATH = "/workspace/.knox/prompt.txt";
 const PROGRESS_FILE = "knox-progress.txt";
 const MAX_RETRIES = 3;
+const CLAUDE_BIN = "/opt/claude/bin/claude";
 
 const COMMIT_NUDGE_PROMPT =
   `You have uncommitted changes in the workspace. Review \`git diff\` and \`git status\`, then commit all changes with a meaningful conventional commit message (e.g., feat:, fix:, refactor:). Do NOT make any further code changes — only commit.`;
@@ -119,7 +120,7 @@ export class AgentRunner {
           "-c",
           `echo '${
             COMMIT_NUDGE_PROMPT.replace(/'/g, "'\\''")
-          }' | claude -p --dangerously-skip-permissions --model ${this.options.model}`,
+          }' | ${CLAUDE_BIN} -p --dangerously-skip-permissions --model ${this.options.model}`,
         ],
         {
           onLine: (line, stream) => {
@@ -209,7 +210,7 @@ export class AgentRunner {
       [
         "sh",
         "-c",
-        `claude -p --dangerously-skip-permissions --model ${this.options.model} < ${PROMPT_PATH}`,
+        `${CLAUDE_BIN} -p --dangerously-skip-permissions --model ${this.options.model} < ${PROMPT_PATH}`,
       ],
       {
         onLine: (line, stream) => {

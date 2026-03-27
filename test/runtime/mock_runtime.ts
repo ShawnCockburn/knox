@@ -122,4 +122,9 @@ export class MockRuntime implements ContainerRuntime {
     this.record("remove", container);
     return Promise.resolve();
   }
+
+  removeImagesByPrefix(prefix: string): Promise<number> {
+    this.record("removeImagesByPrefix", prefix);
+    return Promise.resolve(0);
+  }
 }

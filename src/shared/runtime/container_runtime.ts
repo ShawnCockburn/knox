@@ -83,4 +83,7 @@ export interface ContainerRuntime {
 
   /** Remove a container. */
   remove(container: ContainerId): Promise<void>;
+
+  /** Remove all images matching a tag prefix. Returns the count removed. */
+  removeImagesByPrefix(prefix: string): Promise<number>;
 }

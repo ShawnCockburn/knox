@@ -1,0 +1,7 @@
+{
+  "name": "python",
+  "description": "CPython runtime with pip",
+  "defaultVersion": "3.12",
+  "supportedVersions": ["3.10", "3.11", "3.12", "3.13"],
+  "provides": ["python3", "python", "pip3", "pip"]
+}

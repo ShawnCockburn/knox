@@ -202,4 +202,66 @@ Deno.test("validateManifest", async (t) => {
     // 'a' has two in-g2 dependents but 'a' is in g1, so this is fine.
     assertEquals(result.errors.length, 0);
   });
+
+  // --- Environment field validation ---
+
+  await t.step("rejects setup field on item with migration error", () => {
+    const result = validateManifest({
+      items: [
+        { id: "a", task: "Do A", setup: "npm install" },
+      ],
+    });
+    assertEquals(result.errors.length >= 1, true);
+    assertStringIncludes(result.errors[0].message, "prepare");
+  });
+
+  await t.step("rejects setup field on defaults with migration error", () => {
+    const result = validateManifest({
+      defaults: { setup: "npm install" },
+      items: [
+        { id: "a", task: "Do A" },
+      ],
+    });
+    assertEquals(result.errors.length >= 1, true);
+    assertStringIncludes(result.errors[0].message, "prepare");
+  });
+
+  await t.step("rejects features + image on same item", () => {
+    const result = validateManifest({
+      items: [
+        { id: "a", task: "Do A", features: ["python"], image: "my-image:latest" },
+      ],
+    });
+    assertEquals(result.errors.length >= 1, true);
+    assertStringIncludes(result.errors[0].message, "cannot be used together");
+  });
+
+  await t.step("rejects features + image on defaults", () => {
+    const result = validateManifest({
+      defaults: { features: ["python"], image: "my-image:latest" },
+      items: [
+        { id: "a", task: "Do A" },
+      ],
+    });
+    assertEquals(result.errors.length >= 1, true);
+    assertStringIncludes(result.errors[0].message, "cannot be used together");
+  });
+
+  await t.step("accepts features + prepare on same item", () => {
+    const result = validateManifest({
+      items: [
+        { id: "a", task: "Do A", features: ["python:3.12"], prepare: "pip install flask" },
+      ],
+    });
+    assertEquals(result.errors.length, 0);
+  });
+
+  await t.step("accepts image + prepare on same item", () => {
+    const result = validateManifest({
+      items: [
+        { id: "a", task: "Do A", image: "python:3.12-slim", prepare: "pip install flask" },
+      ],
+    });
+    assertEquals(result.errors.length, 0);
+  });
 });

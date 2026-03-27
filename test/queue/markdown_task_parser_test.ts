@@ -9,7 +9,10 @@ group: backend
 dependsOn:
   - setup-db
   - setup-auth
-setup: echo "setup"
+features:
+  - python:3.12
+prepare: pip install flask
+image:
 check: echo "check"
 maxLoops: 5
 env:
@@ -27,13 +30,29 @@ Implement the OAuth2 flow.
       assertEquals(result.item.model, "claude-opus-4-6");
       assertEquals(result.item.group, "backend");
       assertEquals(result.item.dependsOn, ["setup-db", "setup-auth"]);
-      assertEquals(result.item.setup, 'echo "setup"');
+      assertEquals(result.item.features, ["python:3.12"]);
+      assertEquals(result.item.prepare, "pip install flask");
       assertEquals(result.item.check, 'echo "check"');
       assertEquals(result.item.maxLoops, 5);
       assertEquals(result.item.env, ["MY_VAR=value"]);
       assertEquals(result.item.cpu, "2");
       assertEquals(result.item.memory, "4Gi");
       assertEquals(result.item.task, "Implement the OAuth2 flow.");
+    }
+  });
+
+  await t.step("setup field produces error with migration message", () => {
+    const content = `---
+setup: echo "setup"
+---
+
+Do the thing.
+`;
+    const result = parseMarkdownTask(content, "legacy-task.md");
+    assertEquals(result?.ok, false);
+    if (!result?.ok) {
+      assertEquals(result.errors.some((e) => e.field === "setup"), true);
+      assertStringIncludes(result.errors[0].message, "prepare");
     }
   });
 

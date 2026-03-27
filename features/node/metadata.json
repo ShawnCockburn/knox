@@ -1,0 +1,7 @@
+{
+  "name": "node",
+  "description": "Node.js runtime via nvm (coexists with Claude Code's system Node at /opt/claude/)",
+  "defaultVersion": "22",
+  "supportedVersions": ["18", "20", "22"],
+  "provides": ["node", "npm", "npx"]
+}

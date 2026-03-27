@@ -3,7 +3,7 @@ import type { ContainerRuntime } from "../shared/runtime/container_runtime.ts";
 import { log } from "../shared/log.ts";
 import { DirectoryQueueSource } from "./directory_queue_source.ts";
 import { Orchestrator } from "./orchestrator.ts";
-import type { QueueReport } from "./orchestrator.ts";
+import type { ImageResolver, QueueReport } from "./orchestrator.ts";
 import { BranchQueueOutput } from "./output.ts";
 import type { QueueOutput } from "./output.ts";
 import { StaticRenderer } from "./tui/static_renderer.ts";
@@ -15,6 +15,8 @@ export interface MultiQueueRunnerOptions {
   queueDirs: string[];
   /** Pre-resolved container image. */
   image: string;
+  /** Resolves per-item environment config to a Docker image. */
+  imageResolver?: ImageResolver;
   /** Resolved environment variables (auth + user-supplied). */
   envVars: string[];
   /** Allowed outbound IPs for containers. */
@@ -92,6 +94,7 @@ export class MultiQueueRunner {
       const orchestrator = new Orchestrator({
         source,
         image: this.options.image,
+        imageResolver: this.options.imageResolver,
         envVars: this.options.envVars,
         allowedIPs: this.options.allowedIPs,
         dir: this.options.dir,

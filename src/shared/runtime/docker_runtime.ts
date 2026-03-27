@@ -232,6 +232,30 @@ export class DockerRuntime implements ContainerRuntime {
     }
   }
 
+  async removeImagesByPrefix(prefix: string): Promise<number> {
+    // List images matching the prefix
+    const listResult = await this.run([
+      "images",
+      "--format",
+      "{{.Repository}}:{{.Tag}}",
+      "--filter",
+      `reference=${prefix}*`,
+    ]);
+    if (listResult.exitCode !== 0) {
+      return 0;
+    }
+    const images = listResult.stdout.trim().split("\n").filter((s) =>
+      s.length > 0
+    );
+    if (images.length === 0) return 0;
+
+    const rmResult = await this.run(["rmi", "-f", ...images]);
+    if (rmResult.exitCode !== 0) {
+      throw new Error(`docker rmi failed: ${rmResult.stderr}`);
+    }
+    return images.length;
+  }
+
   private async run(args: string[]): Promise<ExecResult> {
     const cmd = new Deno.Command("docker", {
       args,

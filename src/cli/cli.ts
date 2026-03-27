@@ -5,6 +5,9 @@ import { formatSummary } from "./format.ts";
 import { log } from "../shared/log.ts";
 import { PreflightChecker } from "../shared/preflight/preflight_checker.ts";
 import { ImageManager } from "../shared/image/image_manager.ts";
+import {
+  FeatureRegistry,
+} from "../shared/features/feature_registry.ts";
 import { DockerRuntime } from "../shared/runtime/docker_runtime.ts";
 import { resolveAuth } from "../shared/knox/resolve_auth.ts";
 import { resolveAllowedIPs } from "../shared/knox/resolve_network.ts";
@@ -25,12 +28,90 @@ import {
 } from "../queue/output.ts";
 import type { QueueOutput } from "../queue/output.ts";
 import { MultiQueueRunner } from "../queue/multi_queue_runner.ts";
+import type { QueueDefaults } from "../queue/types.ts";
+
+/**
+ * Resolve queue defaults environment config to a Docker image.
+ * Handles features, prepare, image, and legacy setup rejection.
+ */
+async function resolveDefaultsImage(
+  defaults: QueueDefaults | undefined,
+  imageManager: ImageManager,
+): Promise<string> {
+  if (!defaults) {
+    return await imageManager.ensureFeatureImage({});
+  }
+
+  if (defaults.image) {
+    return await imageManager.ensureCustomImage({
+      image: defaults.image,
+      prepare: defaults.prepare,
+    });
+  }
+
+  // Resolve features if present
+  let resolvedFeatures;
+  if (defaults.features && defaults.features.length > 0) {
+    const registry = new FeatureRegistry();
+    await registry.load();
+    const specs = defaults.features.map((f) => FeatureRegistry.parseSpec(f));
+    const result = await registry.resolve(specs);
+    if (!result.ok) {
+      throw new Error(
+        `Feature resolution failed:\n  ${result.errors.join("\n  ")}`,
+      );
+    }
+    resolvedFeatures = result.features;
+  }
+
+  return await imageManager.ensureFeatureImage({
+    features: resolvedFeatures,
+    prepare: defaults.prepare,
+  });
+}
+
+/**
+ * Create an ImageResolver for per-item environment resolution in the orchestrator.
+ */
+function createImageResolver(
+  imageManager: ImageManager,
+): import("../queue/orchestrator.ts").ImageResolver {
+  return async (env) => {
+    if (env.image) {
+      return await imageManager.ensureCustomImage({
+        image: env.image,
+        prepare: env.prepare,
+      });
+    }
+
+    let resolvedFeatures;
+    if (env.features && env.features.length > 0) {
+      const registry = new FeatureRegistry();
+      await registry.load();
+      const specs = env.features.map((f) => FeatureRegistry.parseSpec(f));
+      const result = await registry.resolve(specs);
+      if (!result.ok) {
+        throw new Error(
+          `Feature resolution failed:\n  ${result.errors.join("\n  ")}`,
+        );
+      }
+      resolvedFeatures = result.features;
+    }
+
+    return await imageManager.ensureFeatureImage({
+      features: resolvedFeatures,
+      prepare: env.prepare,
+    });
+  };
+}
 
 const USAGE = `Usage: knox <command> [options]
 
 Commands:
-  run      Run a single task in a sandboxed container
-  queue    Run a queue of tasks from a YAML manifest
+  run           Run a single task in a sandboxed container
+  queue         Run a queue of tasks from a YAML manifest
+  features      Manage container features
+  cache         Manage image cache
 
 Run 'knox <command> --help' for command-specific usage.`;
 
@@ -40,7 +121,9 @@ Options:
   --task <task>       Task description (required)
   --dir <dir>         Source directory (default: .)
   --model <model>     Claude model (default: sonnet)
-  --setup <cmd>       Setup command to run with network (e.g., "npm install")
+  --features <list>   Features to install (e.g., "python:3.12,deno")
+  --prepare <cmd>     Prepare command to run with network (e.g., "pip install flask")
+  --image <name>      Custom Docker image (mutually exclusive with --features)
   --check <cmd>       Verification command (e.g., "npm test")
   --max-loops <n>     Maximum loop iterations (default: 10)
   --env KEY=VALUE     Environment variable (repeatable)
@@ -130,9 +213,7 @@ if (effectiveCommand === "queue") {
 
       log.info("Resolving shared resources...");
       const imageManager = new ImageManager(runtime);
-      const image = await imageManager.ensureSetupImage(
-        manifest.defaults?.setup,
-      );
+      const image = await resolveDefaultsImage(manifest.defaults, imageManager);
       const resolvedEnvVars = await resolveAuth([]);
       const allowedIPs = await resolveAllowedIPs();
 
@@ -165,6 +246,7 @@ if (effectiveCommand === "queue") {
       const orchestrator = new Orchestrator({
         source,
         image,
+        imageResolver: createImageResolver(imageManager),
         envVars: resolvedEnvVars,
         allowedIPs,
         dir: projectDir,
@@ -235,9 +317,7 @@ if (effectiveCommand === "queue") {
 
       log.info("Resolving shared resources...");
       const imageManager = new ImageManager(runtime);
-      const image = await imageManager.ensureSetupImage(
-        manifest.defaults?.setup,
-      );
+      const image = await resolveDefaultsImage(manifest.defaults, imageManager);
       const resolvedEnvVars = await resolveAuth([]);
       const allowedIPs = await resolveAllowedIPs();
 
@@ -267,6 +347,7 @@ if (effectiveCommand === "queue") {
       const orchestrator = new Orchestrator({
         source,
         image,
+        imageResolver: createImageResolver(imageManager),
         envVars: resolvedEnvVars,
         allowedIPs,
         dir: projectDir,
@@ -326,7 +407,7 @@ if (effectiveCommand === "queue") {
     const runtime = new DockerRuntime();
     log.info("Resolving shared resources...");
     const imageManager = new ImageManager(runtime);
-    const image = await imageManager.ensureSetupImage(undefined);
+    const image = await imageManager.ensureFeatureImage({});
     const resolvedEnvVars = await resolveAuth([]);
     const allowedIPs = await resolveAllowedIPs();
 
@@ -341,6 +422,7 @@ if (effectiveCommand === "queue") {
     const runner = new MultiQueueRunner({
       queueDirs,
       image,
+      imageResolver: createImageResolver(imageManager),
       envVars: resolvedEnvVars,
       allowedIPs,
       dir: projectDir,
@@ -382,7 +464,9 @@ if (effectiveCommand === "queue") {
       "task",
       "dir",
       "model",
-      "setup",
+      "features",
+      "prepare",
+      "image",
       "prompt",
       "check",
       "max-loops",
@@ -394,6 +478,22 @@ if (effectiveCommand === "queue") {
     collect: ["env"],
     default: { dir: ".", model: "sonnet", "max-loops": "10" },
   });
+
+  // Reject legacy --setup flag
+  if ((flags as Record<string, unknown>).setup !== undefined) {
+    console.error(
+      "Error: The `--setup` flag has been renamed to `--prepare`. Please update your command.",
+    );
+    Deno.exit(2);
+  }
+
+  // Validate mutual exclusivity
+  if (flags.features && flags.image) {
+    console.error(
+      "Error: --features and --image cannot be used together. Use --features for Knox-managed runtimes, or --image for a custom Docker image.",
+    );
+    Deno.exit(2);
+  }
 
   if (flags.verbose && flags.quiet) {
     console.error("Error: --verbose and --quiet are mutually exclusive");
@@ -464,9 +564,35 @@ if (effectiveCommand === "queue") {
     // 2. Build/cache images
     const imageManager = new ImageManager(runtime);
     log.info(`Ensuring agent image...`);
-    const image = await imageManager.ensureSetupImage(
-      flags.setup as string | undefined,
-    );
+    let image: string;
+    if (flags.image) {
+      image = await imageManager.ensureCustomImage({
+        image: flags.image as string,
+        prepare: flags.prepare as string | undefined,
+      });
+    } else {
+      // Resolve features if specified
+      let resolvedFeatures;
+      if (flags.features) {
+        const registry = new FeatureRegistry();
+        await registry.load();
+        const featureSpecs = (flags.features as string).split(",").map((s) =>
+          FeatureRegistry.parseSpec(s.trim())
+        );
+        const resolveResult = await registry.resolve(featureSpecs);
+        if (!resolveResult.ok) {
+          for (const err of resolveResult.errors) {
+            log.error(err);
+          }
+          throw new Error("Feature resolution failed");
+        }
+        resolvedFeatures = resolveResult.features;
+      }
+      image = await imageManager.ensureFeatureImage({
+        features: resolvedFeatures,
+        prepare: flags.prepare as string | undefined,
+      });
+    }
     log.debug(`Image ready: ${image}`);
 
     // 3. Resolve authentication
@@ -541,6 +667,70 @@ if (effectiveCommand === "queue") {
       Deno.exit(2);
     }
     Deno.exit(3);
+  }
+} else if (effectiveCommand === "features") {
+  // ── Features subcommand ────────────────────────────────────────────────
+  const subCmd = effectiveArgs[0];
+
+  if (subCmd === "list" || subCmd === undefined) {
+    const registry = new FeatureRegistry();
+    await registry.load();
+    const features = registry.all();
+
+    if (features.length === 0) {
+      console.log("No features available.");
+    } else {
+      // Calculate column widths
+      const nameWidth = Math.max(
+        ...features.map((f) => f.name.length),
+        "Feature".length,
+      );
+      const defaultWidth = Math.max(
+        ...features.map((f) => f.defaultVersion.length),
+        "Default".length,
+      );
+      const versionsWidth = Math.max(
+        ...features.map((f) => f.supportedVersions.join(", ").length),
+        "Versions".length,
+      );
+
+      const header =
+        `${"Feature".padEnd(nameWidth)}  ${"Default".padEnd(defaultWidth)}  ${"Versions".padEnd(versionsWidth)}  Description`;
+      console.log(header);
+      console.log("─".repeat(header.length));
+
+      for (const f of features) {
+        console.log(
+          `${f.name.padEnd(nameWidth)}  ${
+            f.defaultVersion.padEnd(defaultWidth)
+          }  ${
+            f.supportedVersions.join(", ").padEnd(versionsWidth)
+          }  ${f.description}`,
+        );
+      }
+    }
+  } else {
+    console.error(`Unknown features subcommand: ${subCmd}`);
+    console.error("Usage: knox features list");
+    Deno.exit(2);
+  }
+} else if (effectiveCommand === "cache") {
+  // ── Cache subcommand ───────────────────────────────────────────────────
+  const subCmd = effectiveArgs[0];
+
+  if (subCmd === "clear") {
+    const runtime = new DockerRuntime();
+    const imageManager = new ImageManager(runtime);
+    const count = await imageManager.clearCache();
+    if (count === 0) {
+      console.log("No cached images found.");
+    } else {
+      console.log(`Removed ${count} cached image${count !== 1 ? "s" : ""}.`);
+    }
+  } else {
+    console.error(`Unknown cache subcommand: ${subCmd ?? "(none)"}`);
+    console.error("Usage: knox cache clear");
+    Deno.exit(2);
   }
 } else {
   console.error(`Unknown command: ${effectiveCommand}`);

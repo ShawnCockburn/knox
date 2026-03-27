@@ -1,0 +1,7 @@
+{
+  "name": "go",
+  "description": "Go programming language",
+  "defaultVersion": "1.22",
+  "supportedVersions": ["1.21", "1.22", "1.23"],
+  "provides": ["go"]
+}

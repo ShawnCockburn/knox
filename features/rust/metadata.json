@@ -1,0 +1,7 @@
+{
+  "name": "rust",
+  "description": "Rust programming language via rustup",
+  "defaultVersion": "1.78",
+  "supportedVersions": ["1.76", "1.77", "1.78", "1.79", "1.80"],
+  "provides": ["rustc", "cargo", "rustup"]
+}

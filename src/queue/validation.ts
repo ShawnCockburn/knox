@@ -1,5 +1,35 @@
 import type { QueueItem, QueueManifest, ValidationError } from "./types.ts";
 
+const SETUP_MIGRATION_ERROR =
+  "The `setup` field has been renamed to `prepare`. Please update your configuration.";
+
+/** Validate environment fields (features, prepare, image) and reject setup. */
+function validateEnvironmentFields(
+  // deno-lint-ignore no-explicit-any
+  obj: any,
+  context: string,
+  errors: ValidationError[],
+  itemId?: string,
+): void {
+  // Hard break: reject setup field
+  if (obj.setup !== undefined) {
+    errors.push({
+      ...(itemId && { itemId }),
+      field: "setup",
+      message: `${context}: ${SETUP_MIGRATION_ERROR}`,
+    });
+  }
+
+  // Mutual exclusivity: features and image cannot coexist
+  if (obj.features !== undefined && obj.image !== undefined) {
+    errors.push({
+      ...(itemId && { itemId }),
+      field: "features",
+      message: `${context}: 'features' and 'image' cannot be used together. Use 'features' for Knox-managed runtimes, or 'image' for a custom Docker image.`,
+    });
+  }
+}
+
 /** Validate a raw parsed queue manifest and collect all errors. */
 export function validateManifest(
   // deno-lint-ignore no-explicit-any
@@ -30,6 +60,11 @@ export function validateManifest(
         message: "concurrency must be a positive integer",
       });
     }
+  }
+
+  // Validate defaults environment fields
+  if (raw.defaults) {
+    validateEnvironmentFields(raw.defaults, "defaults", errors);
   }
 
   // Validate each item structurally
@@ -94,13 +129,23 @@ export function validateManifest(
       }
     }
 
+    // Validate per-item environment fields
+    validateEnvironmentFields(
+      item,
+      `Item '${item.id}'`,
+      errors,
+      item.id,
+    );
+
     items.push({
       id: item.id,
       task: item.task,
       group: item.group,
       dependsOn: item.dependsOn,
       model: item.model,
-      setup: item.setup,
+      features: item.features,
+      prepare: item.prepare,
+      image: item.image,
       check: item.check,
       maxLoops: item.maxLoops,
       env: item.env,
