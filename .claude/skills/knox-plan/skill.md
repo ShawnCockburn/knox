@@ -1,36 +1,65 @@
-# knox-plan
+---
+name: knox-plan
+description: Decompose a high-level goal (or PRD) into a Knox queue directory of task files. Use when user wants to plan a Knox queue, decompose a goal into tasks, create a .knox/queues directory, or mentions "knox queue".
+---
 
-Decompose a high-level goal into a Knox queue directory.
+Decompose a high-level goal into a Knox queue directory under `.knox/queues/`.
 
-## Trigger
+## Invocation
 
-User invokes `/knox-plan` with a goal string, e.g.:
 ```
 /knox-plan "refactor auth into interface + provider + tests"
+/knox-plan ./prd/008-composable-queue-workflow.md
 ```
 
-The goal may be quoted or unquoted. Extract everything after `/knox-plan` as the goal.
+The argument may be:
+- A **goal string** — extract everything after `/knox-plan` as the goal
+- A **PRD file path** — use the PRD content as the source of truth and skip the interview
 
 ---
 
-## Phase 1 — Interview
+## Step 1 — Explore the codebase
 
-Greet the user and ask clarifying questions before decomposing. Keep it concise — ask all questions in one message:
+Before asking the user anything, explore the project to gather defaults:
 
-1. **Scope**: What files/modules are in scope? Are there files to avoid touching?
-2. **Dependencies**: Are there any tasks that must happen strictly before others (e.g., types before implementations)?
-3. **Grouping**: Should any tasks share a branch (stacked commits)? Related tasks that form a logical feature belong in the same group.
-4. **Setup command**: Is there a setup command needed (e.g., `npm install`, `deno cache`)? This runs before all tasks.
-5. **Check command**: Is there a verification command (e.g., `npm test`, `deno task check`)? This runs after each task to verify correctness.
-6. **Max loops**: How many agent loop iterations per task? (default: 10)
+- Read any existing `_defaults.yaml` files under `.knox/queues/` to understand current conventions (model, concurrency, setup, check, maxLoops)
+- Read the `README.md` or any `CLAUDE.md` for the project's standard build/test commands
+- If a PRD path was provided, read that file now
+- Look at 1–2 existing task files to understand the depth and style already in use
 
-Wait for the user's answers before proceeding to Phase 2.
+Use what you find to pre-fill sensible defaults so you ask fewer questions.
 
 ---
 
-## Phase 2 — Propose
+## Step 2 — Interview (goal string only; skip if PRD provided)
 
-Based on the goal and user answers, decompose into tasks. Present the decomposition clearly:
+Ask the following questions **one at a time**. For each, propose an answer based on what you found in the codebase and ask the user to confirm or correct.
+
+1. **Scope**: What files or modules are in scope? Are there any to avoid?
+   > *Suggest based on the goal and what you found in the codebase.*
+
+2. **Dependencies**: Are there tasks that must happen strictly before others?
+   > *Suggest a rough ordering based on the goal.*
+
+3. **Grouping**: Should any tasks share a branch (stacked commits)?
+   > *Suggest groupings for tasks that form a coherent logical feature.*
+
+4. **Setup command**: Is there a setup command needed (e.g., `deno cache`, `npm install`)?
+   > *Suggest the command found in `_defaults.yaml` or README, or "none" if not found.*
+
+5. **Check command**: Is there a verification command (e.g., `deno task check`, `npm test`)?
+   > *Suggest the command found in `_defaults.yaml` or README, or "none" if not found.*
+
+6. **Max loops**: How many agent loop iterations per task?
+   > *Suggest the value from `_defaults.yaml`, or 10 if not found.*
+
+Wait for the user's answer to each question before asking the next.
+
+---
+
+## Step 3 — Propose
+
+Based on the goal (or PRD) and confirmed answers, decompose into tasks. Present clearly:
 
 ### Proposed: `<queue-name>`
 
@@ -51,7 +80,6 @@ maxLoops: <n>
 |---|---------|-------|------------|-------------|
 | 1 | `task-id` | `group-name` | — | One-line summary |
 | 2 | `task-id` | `group-name` | `task-1` | One-line summary |
-| ... | | | | |
 
 **Dependency graph (DAG):**
 
@@ -61,20 +89,18 @@ task-2 ──► task-3
 task-4 ──► task-5
 ```
 
-Use ASCII art to show the dependency graph. Orphan tasks (no deps) appear on the left.
-
 **Groups:**
-- `group-name`: task-A → task-B → task-C (these produce stacked commits on one branch)
+- `group-name`: task-A → task-B → task-C (stacked commits on one branch)
 - Tasks without a group each get their own branch.
 
 Then ask:
 > Does this decomposition look right? Any tasks to add, remove, rename, or re-group? Reply "yes" to generate the queue, or describe your changes.
 
-Wait for approval before proceeding to Phase 3.
+Wait for approval before proceeding to Step 4.
 
 ---
 
-## Phase 3 — Write Queue Directory
+## Step 4 — Write Queue Directory
 
 Once the user confirms (or after applying adjustments), generate the queue directory.
 
@@ -83,7 +109,7 @@ Once the user confirms (or after applying adjustments), generate the queue direc
 Convert the goal to a kebab-case slug:
 - Lowercase
 - Replace spaces, slashes, underscores, and special characters with hyphens
-- Remove repeated hyphens
+- Collapse repeated hyphens
 - Trim leading/trailing hyphens
 - Max 40 characters
 
@@ -108,16 +134,15 @@ concurrency: 2
 defaults:
   model: sonnet
   setup: "npm install"   # omit if none
-  check: "npm test"       # omit if none
+  check: "npm test"      # omit if none
   maxLoops: 10
 ```
 
-Only include `setup`, `check`, or `maxLoops` if they were specified (not defaults).
-Always include `model: sonnet` and `concurrency`.
+Only include `setup`, `check`, or `maxLoops` if they were specified. Always include `model: sonnet` and `concurrency`.
 
 ### Per-task `.md` file format
 
-Each task file is named `<task-id>.md` and has YAML frontmatter followed by a detailed task description:
+Each task file is named `<task-id>.md` with YAML frontmatter followed by a task description:
 
 ```markdown
 ---
@@ -127,20 +152,21 @@ group: group-name            # omit if no group
 ---
 
 <Detailed task description here>
-
-The description should include:
-- What to implement or change
-- Which files to create or modify
-- Any interfaces, types, or contracts to define
-- Any constraints or conventions to follow
-- How success is measured (what the check command verifies)
 ```
 
-**Important:** Omit `dependsOn` entirely if the array is empty. Omit `group` if the task has no group. Do not include `model`, `setup`, `check`, or `maxLoops` in per-task frontmatter unless they differ from `_defaults.yaml`.
+**Task description guidelines:**
+- Describe *what behavior to implement*, not which files to touch — the agent discovers files itself
+- Include the goal, key requirements, expected inputs/outputs, and relevant constraints
+- Include interfaces, types, or contracts to define (by name, not file path)
+- State how success is measured (what the check command verifies)
+- Be specific enough that an agent can execute without further clarification
+- Do NOT include specific file paths or function signatures — these go stale
+
+**Omit** `dependsOn` entirely if empty. **Omit** `group` if none. Do not include `model`, `setup`, `check`, or `maxLoops` in per-task frontmatter unless they differ from `_defaults.yaml`.
 
 ### Writing files
 
-Use the Write tool to create each file. Create the directory and all files in sequence.
+Use the Write tool to create each file in sequence.
 
 After writing all files, output:
 
@@ -154,13 +180,7 @@ Files:
   ...
 
 To run:
-  knox queue --file .knox/queues/<queue-name>/<first-task>.md
-
-Note: Knox currently uses `--file` with a single YAML manifest. To use this
-directory-based format, either:
-  1. Run tasks individually: knox run --task "$(cat .knox/queues/<queue-name>/<task>.md)"
-  2. Combine into a YAML manifest manually
-  3. Use `knox queue --name <queue-name>` if directory queue support is available
+  knox queue --name <queue-name>
 ```
 
 ---
@@ -168,8 +188,7 @@ directory-based format, either:
 ## Guidelines
 
 - **Task granularity**: Each task should be completable in one Knox run (10 loops or fewer). If a task seems too large, split it.
-- **Task descriptions**: Be specific. Include file paths, interfaces, function signatures where known. Vague tasks produce vague results.
-- **Groups**: Only group tasks that genuinely depend on each other's output and produce a coherent feature. Don't group unrelated tasks.
-- **DAG validity**: Ensure no cycles. A task cannot (directly or transitively) depend on itself.
-- **Naming**: Task IDs should be lowercase kebab-case nouns or verb-noun phrases (e.g., `define-auth-interface`, `implement-jwt-provider`, `write-auth-tests`).
-- **Model**: Default to `sonnet`. Only suggest `opus` for highly complex tasks that need deeper reasoning.
+- **Groups**: Only group tasks that genuinely depend on each other's output and produce a coherent feature.
+- **DAG validity**: Ensure no cycles. A task cannot directly or transitively depend on itself.
+- **Naming**: Task IDs should be lowercase kebab-case verb-noun phrases (e.g., `define-auth-interface`, `implement-jwt-provider`, `write-auth-tests`).
+- **Model**: Default to `sonnet`. Only suggest `opus` for tasks requiring unusually deep reasoning.
