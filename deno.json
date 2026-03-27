@@ -2,6 +2,7 @@
   "name": "@knox/knox",
   "version": "0.1.0",
   "exports": "./src/mod.ts",
+  "bin": "./src/cli/cli.ts",
   "tasks": {
     "dev": "deno run --allow-run --allow-read --allow-write --allow-env --allow-net src/cli/cli.ts",
     "test": "deno test --allow-run --allow-read --allow-write --allow-env --allow-net test/",
