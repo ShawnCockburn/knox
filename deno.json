@@ -22,6 +22,7 @@
     "@std/streams": "jsr:@std/streams@1",
     "@std/yaml": "jsr:@std/yaml@1"
   },
+  "unstable": ["raw-imports"],
   "compilerOptions": {
     "strict": true
   },

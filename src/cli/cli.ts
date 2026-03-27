@@ -1,5 +1,6 @@
 import { parseArgs } from "@std/cli";
 import { basename, dirname, resolve } from "@std/path";
+import { runInit } from "./commands/init.ts";
 import { Knox } from "../engine/knox.ts";
 import { formatSummary } from "./format.ts";
 import { log } from "../shared/log.ts";
@@ -108,6 +109,7 @@ function createImageResolver(
 const USAGE = `Usage: knox <command> [options]
 
 Commands:
+  init          Set up Knox in a repository
   run           Run a single task in a sandboxed container
   queue         Run a queue of tasks from a YAML manifest
   features      Manage container features
@@ -154,7 +156,9 @@ const isFlag = subcommand?.startsWith("-");
 const effectiveCommand = (!subcommand || isFlag) ? null : subcommand;
 const effectiveArgs = isFlag ? Deno.args : subcommandArgs;
 
-if (effectiveCommand === "queue") {
+if (effectiveCommand === "init") {
+  await runInit();
+} else if (effectiveCommand === "queue") {
   const flags = parseArgs(effectiveArgs, {
     string: ["file", "name", "output"],
     boolean: ["resume", "verbose", "no-tui", "help"],
