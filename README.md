@@ -28,7 +28,7 @@ deno task compile
 
 ## Usage
 
-Knox has two subcommands: `run` (single task) and `queue` (batch).
+Knox has four subcommands: `run`, `queue`, `features`, and `cache`.
 
 ### Single task — `knox run`
 
@@ -36,12 +36,25 @@ Knox has two subcommands: `run` (single task) and `queue` (batch).
 # Basic usage
 knox run --task "Add input validation to the signup form" --dir ./my-project
 
-# With setup and verification
+# With features and verification
 knox run --task "Fix the flaky pagination test" \
   --dir ./my-project \
-  --setup "npm install" \
+  --features "node:22" \
+  --prepare "npm install" \
   --check "npm test" \
   --max-loops 5
+
+# Multiple features
+knox run --task "Build the data pipeline" \
+  --dir ./my-project \
+  --features "python:3.12,deno" \
+  --prepare "pip install -r requirements.txt"
+
+# Custom Docker image
+knox run --task "Fix the legacy service" \
+  --dir ./my-project \
+  --image python:3.12-slim \
+  --prepare "pip install flask"
 
 # Custom model and resource limits
 knox run --task "Refactor auth middleware to use JWT" \
@@ -55,31 +68,28 @@ knox run --task "Update API client" \
   --dir ./my-project \
   --env DATABASE_URL=postgres://localhost/dev \
   --env FEATURE_FLAG=true
-
-# Custom prompt
-knox run --task "Migrate to TypeScript" \
-  --dir ./my-project \
-  --prompt ./my-prompt.md
 ```
 
 #### Run options
 
-| Flag               | Default      | Description                                                 |
-| ------------------ | ------------ | ----------------------------------------------------------- |
-| `--task`           | _(required)_ | Task description for the agent                              |
-| `--dir`            | `.`          | Source directory to work on                                  |
-| `--model`          | `sonnet`     | Claude model to use                                         |
-| `--setup`          | —            | Setup command run with network access (e.g., `npm install`) |
-| `--check`          | —            | Verification command run after agent signals completion     |
-| `--max-loops`      | `10`         | Maximum agent loop iterations                               |
-| `--env`            | —            | Environment variable as `KEY=VALUE` (repeatable)            |
-| `--prompt`         | —            | Path to custom prompt file                                  |
-| `--cpu`            | —            | CPU limit (e.g., `2`)                                       |
-| `--memory`         | —            | Memory limit (e.g., `4g`)                                   |
-| `--skip-preflight` | `false`      | Skip preflight checks                                       |
-| `--verbose`        | `false`      | Show debug-level messages                                   |
-| `--output`         | config/`branch` | Output strategy: `branch` or `pr`                      |
-| `--quiet`          | `false`      | Suppress info messages (warnings and errors only)           |
+| Flag               | Default         | Description                                                      |
+| ------------------ | --------------- | ---------------------------------------------------------------- |
+| `--task`           | _(required)_    | Task description for the agent                                   |
+| `--dir`            | `.`             | Source directory to work on                                       |
+| `--model`          | `sonnet`        | Claude model to use                                              |
+| `--features`       | —               | Features to install (e.g., `python:3.12,deno`) — see [Container Environment](#container-environment) |
+| `--prepare`        | —               | Prepare command run with network access (e.g., `pip install flask`) |
+| `--image`          | —               | Custom Docker image (mutually exclusive with `--features`)       |
+| `--check`          | —               | Verification command run after agent signals completion          |
+| `--max-loops`      | `10`            | Maximum agent loop iterations                                    |
+| `--env`            | —               | Environment variable as `KEY=VALUE` (repeatable)                 |
+| `--prompt`         | —               | Path to custom prompt file                                       |
+| `--cpu`            | —               | CPU limit (e.g., `2`)                                            |
+| `--memory`         | —               | Memory limit (e.g., `4g`)                                        |
+| `--skip-preflight` | `false`         | Skip preflight checks                                            |
+| `--verbose`        | `false`         | Show debug-level messages                                        |
+| `--output`         | config/`branch` | Output strategy: `branch` or `pr`                                |
+| `--quiet`          | `false`         | Suppress info messages (warnings and errors only)                |
 
 ### Queue — `knox queue`
 
@@ -137,9 +147,9 @@ Replace all `throw new Error(...)` calls with the typed error classes
 defined in `src/errors/`. Update catch blocks in middleware to match.
 ```
 
-Frontmatter fields: `dependsOn`, `model`, `setup`, `check`, `group`,
-`maxLoops`, `env`, `cpu`, `memory`. Files prefixed with `_` are skipped
-(reserved for config).
+Frontmatter fields: `dependsOn`, `model`, `features`, `prepare`, `image`,
+`check`, `group`, `maxLoops`, `env`, `cpu`, `memory`. Files prefixed with `_`
+are skipped (reserved for config).
 
 An optional `_defaults.yaml` provides queue-level defaults — same shape as the
 YAML manifest `defaults` key:
@@ -147,7 +157,9 @@ YAML manifest `defaults` key:
 ```yaml
 # _defaults.yaml
 model: sonnet
-setup: "npm install"
+features:
+  - node:22
+prepare: "npm install"
 check: "npm test"
 maxLoops: 5
 ```
@@ -233,7 +245,9 @@ concurrency: 2
 
 defaults:
   model: sonnet
-  setup: "npm install"
+  features:
+    - node:22
+  prepare: "npm install"
   check: "npm test"
   maxLoops: 5
 
@@ -259,9 +273,12 @@ items:
 
 Knox uses a two-phase execution model:
 
-**Phase 1 — Setup (networked).** A container starts with network access. Your
-`--setup` command runs (e.g., `npm install`). The resulting state is cached as a
-Docker image so subsequent runs skip this step.
+**Phase 1 — Environment (networked).** Knox builds a container image with your
+declared features and prepare command. Features install language runtimes
+(Python, Node, etc.) into the base image, and the prepare command runs
+project-specific setup (e.g., `pip install flask`). The resulting image is
+cached — same inputs produce the same cache tag, so subsequent runs skip the
+build.
 
 **Phase 2 — Agent (egress-filtered).** Network is restricted to Anthropic API
 endpoints and DNS only. Your code is copied in.
@@ -294,8 +311,8 @@ orchestrator schedules items based on the dependency DAG and runs up to
 Knox uses three layers of configuration, each overriding the previous:
 
 1. **Queue definition** (`_defaults.yaml` + task frontmatter) — what to build.
-   Model, setup commands, check commands, dependencies, groups. No output
-   config here.
+   Model, features, prepare commands, check commands, dependencies, groups.
+   No output config here.
 2. **Project config** (`.knox/config.yaml`) — how to deliver results. Sets the
    output strategy and PR options project-wide.
 3. **CLI flags** (`--output`, `--verbose`, etc.) — per-invocation overrides.
@@ -308,21 +325,150 @@ pr:
   base: main      # target branch for PRs
 ```
 
+## Container Environment
+
+Knox containers start with a minimal base image (Ubuntu 24.04 + git + curl).
+Claude Code is installed at `/opt/claude/` and is invisible to user processes —
+there are no language runtimes on PATH by default. You configure the environment
+using **features**, the **prepare** command, or a custom **image**.
+
+### Features
+
+Features are Knox-managed install scripts that add language runtimes to the
+container. Each feature supports specific versions validated before any Docker
+work begins.
+
+```sh
+# See what's available
+knox features list
+```
+
+| Feature  | Default | Versions                       | Description                        |
+| -------- | ------- | ------------------------------ | ---------------------------------- |
+| `python` | 3.12    | 3.10, 3.11, 3.12, 3.13        | CPython via deadsnakes PPA         |
+| `node`   | 22      | 18, 20, 22                     | Node.js via nvm (separate from Claude Code's Node) |
+| `deno`   | 2.0     | 1.46, 2.0, 2.1                | Deno runtime                       |
+| `go`     | 1.22    | 1.21, 1.22, 1.23              | Go from official tarball           |
+| `rust`   | 1.78    | 1.76, 1.77, 1.78, 1.79, 1.80  | Rust via rustup                    |
+| `ruby`   | 3.3     | 3.1, 3.2, 3.3                 | Ruby via ruby-install              |
+
+Use features on the CLI, in `_defaults.yaml`, or in task frontmatter:
+
+```sh
+# CLI: comma-separated, with optional version
+knox run --task "..." --features "python:3.12,deno"
+
+# Queue defaults (_defaults.yaml)
+features:
+  - python:3.12
+  - deno
+
+# Task frontmatter
+---
+features:
+  - rust:1.78
+prepare: "cargo build"
+---
+```
+
+Bare feature names (e.g., `python`) use the default version. Features install
+in alphabetical order for deterministic caching. Multiple features stack into a
+single image — `features: [python, deno, rust]` produces a container with all
+three runtimes on PATH.
+
+### Prepare command
+
+The `prepare` field runs a shell command with network access after features are
+installed. Use it for project-specific setup:
+
+```yaml
+features:
+  - python:3.12
+prepare: "pip install -r requirements.txt"
+```
+
+### Custom image
+
+For environments that features don't cover, use `image:` to bring your own
+Docker image:
+
+```yaml
+image: python:3.12-slim
+prepare: "pip install flask"
+```
+
+`image` and `features` are mutually exclusive — Knox rejects configs that
+specify both. When `image` is used without `prepare`, Knox uses the image
+directly. When combined with `prepare`, Knox runs the prepare command and caches
+the result.
+
+**Custom image requirements**: Your image must have `git` installed and a
+non-root user. Claude Code is invoked via `/opt/claude/bin/claude` which exists
+in the Knox base image — custom images should either extend the Knox base image
+or install Claude Code at that path.
+
+### Per-item environments
+
+In queues, each item can declare its own environment. Per-item config **replaces**
+queue defaults entirely (no merging):
+
+```yaml
+# _defaults.yaml — applies to items with no environment config
+features:
+  - node:22
+prepare: "npm install"
+```
+
+```markdown
+---
+features:
+  - python:3.12
+prepare: "pip install flask"
+---
+
+This item gets Python, not Node. Queue defaults are fully replaced.
+```
+
+Items with identical environment configs share the same cached image.
+
+### Image caching
+
+Knox caches built images as `knox-cache:<hash>` tags. The cache key is a SHA-256
+hash of all inputs: Dockerfile content, feature install script contents, feature
+versions, and prepare command. Changing any input produces a new cache key.
+
+```sh
+# Remove all cached images
+knox cache clear
+```
+
 ## Architecture
 
 ```
+features/              # Feature install scripts + metadata
+├── python/            #   install.sh + metadata.json per feature
+├── node/
+├── deno/
+├── go/
+├── rust/
+└── ruby/
 src/
-├── cli/           # CLI entry point, arg parsing, output formatting
-├── engine/        # Core single-run engine
-│   ├── agent/     # Agent Runner — loop execution, completion detection, commit recovery
-│   ├── session/   # Container Session — container lifecycle, network, bundle extraction
-│   ├── source/    # Source Provider — how code gets into a container
-│   ├── sink/      # Result Sink — how results get out (branch creation)
-│   └── prompt/    # Prompt construction per loop
-├── queue/         # Queue orchestration layer
-│   ├── tui/       # Queue TUI and Static Renderer
-│   └── output/    # Queue Output — post-queue delivery (branches, PRs)
-└── shared/        # Shared infra: auth, Docker runtime, image caching, logging
+├── cli/               # CLI entry point, arg parsing, output formatting
+├── engine/            # Core single-run engine
+│   ├── agent/         # Agent Runner — loop execution, completion detection, commit recovery
+│   ├── session/       # Container Session — container lifecycle, network, bundle extraction
+│   ├── source/        # Source Provider — how code gets into a container
+│   ├── sink/          # Result Sink — how results get out (branch creation)
+│   └── prompt/        # Prompt construction per loop
+├── queue/             # Queue orchestration layer
+│   ├── tui/           # Queue TUI and Static Renderer
+│   └── output/        # Queue Output — post-queue delivery (branches, PRs)
+└── shared/            # Shared infra
+    ├── features/      # Feature Registry — metadata loading, version resolution
+    ├── image/         # Image Manager — build pipeline, caching
+    ├── runtime/       # Container Runtime interface + Docker implementation
+    ├── auth/          # Credential resolution
+    └── knox/          # Network config, project config
 ```
 
 ## Library Usage
@@ -386,6 +532,12 @@ const knox = new Knox({
 | `1`  | Some items failed or blocked       |
 | `2`  | Validation failure (bad manifest)  |
 | `3`  | Orchestrator crash                 |
+
+## License
+
+Knox is licensed under the [Elastic License 2.0](LICENSE). You may use, modify,
+and distribute Knox — including in commercial settings — but you may not offer it
+as a hosted or managed service to third parties without permission.
 
 ## Development
 
