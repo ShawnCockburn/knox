@@ -16,7 +16,7 @@ export type CommandRunner = (
   cwd: string,
 ) => Promise<{ success: boolean; stdout: string; stderr: string; code: number }>;
 
-async function defaultCommandRunner(
+export async function defaultCommandRunner(
   args: string[],
   cwd: string,
 ): Promise<{ success: boolean; stdout: string; stderr: string; code: number }> {

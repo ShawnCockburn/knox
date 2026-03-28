@@ -5,10 +5,10 @@ task and a directory — it copies your code into a container, runs Claude Code 
 an iterative loop until the task is complete, and gives you back the result as a
 git branch.
 
-Run a single task, or define a queue of tasks — as a YAML manifest or a
-directory of Markdown files — with dependencies and groups. Knox schedules them
-as a DAG, runs them concurrently, and produces one branch per group with stacked
-commits.
+Run a single task, or define a queue of tasks — as a YAML manifest, a directory
+of Markdown files, or GitHub Issues — with dependencies and groups. Knox
+schedules them as a DAG, runs them concurrently, and produces one branch per
+group with stacked commits.
 
 The agent has full access inside the container but zero access to your host
 filesystem or network. The container is the permission boundary.
@@ -97,27 +97,44 @@ Knox queues are a three-stage pipeline: **Ingest** (load task definitions) →
 **Build** (run each task in a container) → **Output** (deliver results as
 branches or PRs).
 
+The `--source` flag is required and selects where tasks come from:
+
 ```sh
+# ── Directory source ────────────────────────────────────────────────
+
 # Run a named queue from .knox/queues/<name>/
-knox queue --name auth-refactor
+knox queue --source directory --name auth-refactor
 
 # Auto-discover and run all queues under .knox/queues/
-knox queue
+knox queue --source directory
 
 # Run a YAML queue file
-knox queue --file ./tasks.yaml
+knox queue --source directory --file ./tasks.yaml
 
 # Resume a previous run (skips completed items, retries failed)
-knox queue --name auth-refactor --resume
+knox queue --source directory --name auth-refactor --resume
+
+# ── GitHub source ───────────────────────────────────────────────────
+
+# Run tasks from GitHub Issues labeled 'agent/knox'
+knox queue --source github
+
+# ── Common options ──────────────────────────────────────────────────
 
 # Output as PRs instead of branches
-knox queue --output pr
+knox queue --source directory --output pr
 
 # Verbose with live TUI disabled (plain log lines)
-knox queue --verbose --no-tui
+knox queue --source directory --verbose --no-tui
 ```
 
-#### Defining a queue
+#### Queue sources
+
+Knox supports two queue sources: **directory** (local Markdown/YAML files) and
+**github** (GitHub Issues). Both produce the same manifest format and run
+through the same orchestrator.
+
+##### Directory source
 
 A queue is a directory of Markdown task files under `.knox/queues/`:
 
@@ -167,11 +184,56 @@ maxLoops: 5
 Alternatively, a queue can be a single YAML manifest file (see
 [YAML format](#yaml-manifest-format) below).
 
+##### GitHub source
+
+With `--source github`, Knox fetches open GitHub Issues labeled `agent/knox`
+from the current repository and treats each one as a task. Issue bodies use the
+same frontmatter + Markdown format as directory-based tasks:
+
+```markdown
+---
+model: opus
+features:
+  - python:3.12
+prepare: "pip install -r requirements.txt"
+check: "pytest"
+maxLoops: 8
+---
+
+Refactor the authentication module to use JWT tokens instead of session cookies.
+Update all tests to use the new auth flow.
+```
+
+Each issue gets an item ID in the format `gh-<number>-<slugified-title>` (e.g.,
+`gh-42-refactor-auth-to-jwt`). The slugified title portion is capped at 50
+characters.
+
+Knox auto-creates `knox/claimed`, `knox/running`, `knox/failed`, and
+`knox/blocked` labels in the repo on first use. Knox never adds or removes the
+`agent/knox` label — that's yours to manage.
+
+When a task completes, Knox closes the issue and removes the `knox/claimed`
+label. Pull requests in the issue list are automatically filtered out.
+
+Queue-level defaults for the GitHub source are configured in
+`.knox/config.yaml`:
+
+```yaml
+# .knox/config.yaml
+github:
+  defaults:
+    model: sonnet
+    features:
+      - node:22
+    prepare: "npm install"
+    maxLoops: 5
+```
+
 #### How queues run
 
 1. **Ingest** — Knox loads task definitions via a Queue Source (Markdown
-   directory or YAML file), parses and validates the manifest, and builds the
-   dependency DAG.
+   directory, YAML file, or GitHub Issues), parses and validates the manifest,
+   and builds the dependency DAG.
 
 2. **Build** — The orchestrator generates a queue run ID, resolves shared
    resources (image, credentials, allowed IPs) once, then schedules items:
@@ -194,9 +256,10 @@ Alternatively, a queue can be a single YAML manifest file (see
 
 #### Queue state
 
-- **State file** — `.state.yaml` written alongside the manifest (YAML mode) or
-  inside the queue directory (Markdown mode). Updated on every status transition
-  (`pending` → `in_progress` → `completed` / `failed` / `blocked`).
+- **State file** — `.state.yaml` written alongside the manifest (YAML mode),
+  inside the queue directory (Markdown mode), or at `.knox/github.state.yaml`
+  (GitHub mode). Updated on every status transition (`pending` → `in_progress` →
+  `completed` / `failed` / `blocked`).
 - **Per-item logs** — Agent output captured to a `.logs/` directory next to the
   queue, one file per item (`<item-id>.log`), regardless of verbosity.
 - **Report** — Full JSON printed to stdout with all item outcomes.
@@ -212,11 +275,12 @@ output.
 
 #### Queue modes
 
-| Mode | Flag | Source |
-| ---- | ---- | ------ |
-| Named | `--name my-queue` | Markdown directory at `.knox/queues/my-queue/` |
-| Discovery | _(no flag)_ | All queues under `.knox/queues/` (alphabetical) |
-| File | `--file ./tasks.yaml` | Single YAML manifest |
+| Source | Mode | Flags | What it loads |
+| ------ | ---- | ----- | ------------- |
+| `directory` | Named | `--name my-queue` | Markdown directory at `.knox/queues/my-queue/` |
+| `directory` | Discovery | _(no extra flag)_ | All queues under `.knox/queues/` (alphabetical) |
+| `directory` | File | `--file ./tasks.yaml` | Single YAML manifest |
+| `github` | — | _(no extra flag)_ | Open GitHub Issues with `agent/knox` label |
 
 **Discovery mode** scans `.knox/queues/` for subdirectories containing at least
 one `.md` task file. Each qualifying directory becomes a queue. Queues run
@@ -224,16 +288,18 @@ sequentially in alphabetical order with a combined summary at the end.
 
 #### Queue options
 
-| Flag        | Default         | Description                               |
-| ----------- | --------------- | ----------------------------------------- |
-| `--name`    | —               | Named queue from `.knox/queues/<name>/`   |
-| `--file`    | —               | Path to a YAML queue manifest             |
-| `--output`  | config/`branch` | Output strategy: `branch` or `pr`         |
-| `--resume`  | `false`         | Resume from existing state file           |
-| `--verbose` | `false`         | Show agent output with `[item-id]` prefix |
-| `--no-tui`  | `false`         | Disable live TUI (use plain log lines)    |
+| Flag        | Default         | Description                                                      |
+| ----------- | --------------- | ---------------------------------------------------------------- |
+| `--source`  | _(required)_    | Queue source: `directory` or `github`                            |
+| `--name`    | —               | Named queue from `.knox/queues/<name>/` (`--source directory`)   |
+| `--file`    | —               | Path to a YAML queue manifest (`--source directory`)             |
+| `--output`  | config/`branch` | Output strategy: `branch` or `pr`                                |
+| `--resume`  | `false`         | Resume from existing state file                                  |
+| `--verbose` | `false`         | Show agent output with `[item-id]` prefix                        |
+| `--no-tui`  | `false`         | Disable live TUI (use plain log lines)                           |
 
-With no `--file` or `--name`, Knox auto-discovers queues under `.knox/queues/`.
+With `--source directory` and no `--file` or `--name`, Knox auto-discovers
+queues under `.knox/queues/`.
 
 #### YAML manifest format
 
@@ -310,11 +376,11 @@ orchestrator schedules items based on the dependency DAG and runs up to
 
 Knox uses three layers of configuration, each overriding the previous:
 
-1. **Queue definition** (`_defaults.yaml` + task frontmatter) — what to build.
-   Model, features, prepare commands, check commands, dependencies, groups.
-   No output config here.
+1. **Queue definition** (`_defaults.yaml` + task frontmatter, or
+   `github.defaults` in config) — what to build. Model, features, prepare
+   commands, check commands, dependencies, groups. No output config here.
 2. **Project config** (`.knox/config.yaml`) — how to deliver results. Sets the
-   output strategy and PR options project-wide.
+   output strategy, PR options, and GitHub source settings project-wide.
 3. **CLI flags** (`--output`, `--verbose`, etc.) — per-invocation overrides.
 
 ```yaml
@@ -323,6 +389,16 @@ output: pr        # "branch" (default) or "pr"
 pr:
   draft: true     # create PRs as drafts
   base: main      # target branch for PRs
+github:           # GitHub Issues source config
+  authors:        # restrict to issues by these users (defaults to current gh user)
+    - alice
+    - bob
+  defaults:       # queue-level defaults for GitHub Issues (same shape as _defaults.yaml)
+    model: sonnet
+    features:
+      - node:22
+    prepare: "npm install"
+    maxLoops: 5
 ```
 
 ## Container Environment

@@ -137,11 +137,15 @@ Options:
   --verbose           Show debug-level messages
   --quiet             Suppress info messages (show warnings and errors only)`;
 
-const QUEUE_USAGE = `Usage: knox queue [options]
+const QUEUE_USAGE = `Usage: knox queue --source <directory|github> [options]
+
+Sources:
+  --source directory   Run queue from local Markdown/YAML files (use with --file or --name)
+  --source github      Run queue from GitHub Issues labeled 'agent/knox'
 
 Options:
-  --file <path>       Queue YAML file (existing behavior)
-  --name <name>       Run a specific queue from .knox/queues/<name>/
+  --file <path>       Queue YAML file (--source directory)
+  --name <name>       Run a specific queue from .knox/queues/<name>/ (--source directory)
   --output <strategy> Output strategy: "branch" or "pr" (overrides .knox/config.yaml)
   --resume            Resume from last checkpoint
   --verbose           Show debug-level messages
@@ -160,7 +164,7 @@ if (effectiveCommand === "init") {
   await runInit();
 } else if (effectiveCommand === "queue") {
   const flags = parseArgs(effectiveArgs, {
-    string: ["file", "name", "output"],
+    string: ["file", "name", "output", "source"],
     boolean: ["resume", "verbose", "no-tui", "help"],
   });
 
@@ -171,6 +175,24 @@ if (effectiveCommand === "init") {
 
   if (flags.verbose) {
     log.setLevel("debug");
+  }
+
+  // --source is required
+  if (!flags.source) {
+    console.error(
+      "Error: --source is required.\n\n" +
+        "Migration: The 'knox queue' command now requires an explicit --source flag.\n" +
+        "  For local Markdown/YAML queues:  knox queue --source directory [--file <path> | --name <name>]\n" +
+        "  For GitHub Issues:               knox queue --source github\n",
+    );
+    Deno.exit(2);
+  }
+
+  if (flags.source !== "directory" && flags.source !== "github") {
+    console.error(
+      `Error: --source must be 'directory' or 'github', got '${flags.source}'`,
+    );
+    Deno.exit(2);
   }
 
   const projectDir = resolve(".");
@@ -193,124 +215,293 @@ if (effectiveCommand === "init") {
   const isVerbose = flags.verbose as boolean;
   const useTUI = isTTY && !flags["no-tui"];
 
-  if (flags.file) {
-    // ── File mode (existing behaviour) ──────────────────────────────────────
-    const queueFilePath = resolve(flags.file as string);
-    try {
-      await Deno.stat(queueFilePath);
-    } catch {
-      console.error(`Error: queue file not found: ${queueFilePath}`);
-      Deno.exit(2);
-    }
-
-    const runtime = new DockerRuntime();
-
-    try {
-      const source = new FileQueueSource(queueFilePath);
-      const loadResult = await source.load();
-      if (!loadResult.ok) {
-        for (const err of loadResult.errors) {
-          log.error(err.message);
-        }
+  if (flags.source === "directory") {
+    // ── Directory source ────────────────────────────────────────────────────
+    if (flags.file) {
+      // ── File mode (existing behaviour) ────────────────────────────────────
+      const queueFilePath = resolve(flags.file as string);
+      try {
+        await Deno.stat(queueFilePath);
+      } catch {
+        console.error(`Error: queue file not found: ${queueFilePath}`);
         Deno.exit(2);
       }
-      const manifest = loadResult.manifest;
 
+      const runtime = new DockerRuntime();
+
+      try {
+        const source = new FileQueueSource(queueFilePath);
+        const loadResult = await source.load();
+        if (!loadResult.ok) {
+          for (const err of loadResult.errors) {
+            log.error(err.message);
+          }
+          Deno.exit(2);
+        }
+        const manifest = loadResult.manifest;
+
+        log.info("Resolving shared resources...");
+        const imageManager = new ImageManager(runtime);
+        const image = await resolveDefaultsImage(manifest.defaults, imageManager);
+        const resolvedEnvVars = await resolveAuth([]);
+        const allowedIPs = await resolveAllowedIPs();
+
+        const queueName = basename(queueFilePath).replace(/\.ya?ml$/, "");
+        const logDir = resolve(dirname(queueFilePath), `${queueName}.logs`);
+
+        const itemIds = manifest.items.map((i) => i.id);
+        let renderer: StaticRenderer | QueueTUI;
+        if (useTUI) {
+          renderer = new QueueTUI(itemIds, {
+            verbose: isVerbose,
+            queueName,
+          });
+        } else {
+          renderer = new StaticRenderer({ verbose: isVerbose });
+        }
+
+        const controller = new AbortController();
+        Deno.addSignalListener("SIGINT", () => {
+          controller.abort();
+          renderer.setAborting();
+          if (!useTUI) {
+            log.info(`\nInterrupted. Aborting queue...`);
+          }
+        });
+
+        if (useTUI) log.mute();
+        renderer.start();
+
+        const orchestrator = new Orchestrator({
+          source,
+          image,
+          imageResolver: createImageResolver(imageManager),
+          envVars: resolvedEnvVars,
+          allowedIPs,
+          dir: projectDir,
+          logDir,
+          signal: controller.signal,
+          resume: flags.resume as boolean,
+          verbose: isVerbose,
+          suppressSummary: true,
+          runtime,
+          onLine: (itemId, line) => renderer.appendLine(itemId, line),
+          onEvent: (itemId, event) => renderer.update(itemId, event),
+          onItemRunning: (itemId) => renderer.markItemRunning(itemId),
+          onItemCompleted: (itemId, branch) =>
+            renderer.markItemCompleted(itemId, branch),
+          onItemFailed: (itemId, error) => renderer.markItemFailed(itemId, error),
+          onItemBlocked: (itemId, blockedBy) =>
+            renderer.markItemBlocked(itemId, blockedBy),
+        });
+
+        const report = await orchestrator.run();
+        renderer.stop();
+        if (useTUI) log.unmute();
+
+        console.error(renderer.formatSummary());
+
+        // Run post-queue output handler
+        await queueOutput.onQueueComplete(report);
+
+        console.log(JSON.stringify(report, null, 2));
+
+        const allCompleted = report.items.every((i) => i.status === "completed");
+        Deno.exit(allCompleted ? 0 : 1);
+      } catch (e) {
+        if (e instanceof OrchestratorValidationError) {
+          for (const err of e.errors) {
+            log.error(err.message);
+          }
+          Deno.exit(2);
+        }
+        const msg = e instanceof Error ? e.message : String(e);
+        log.error(`Fatal: ${msg}`);
+        Deno.exit(3);
+      }
+    } else if (flags.name) {
+      // ── Named queue mode ──────────────────────────────────────────────────
+      const queueDir = resolve(projectDir, ".knox", "queues", flags.name as string);
+      try {
+        await Deno.stat(queueDir);
+      } catch {
+        console.error(
+          `Error: queue not found: .knox/queues/${flags.name}/`,
+        );
+        Deno.exit(2);
+      }
+
+      const runtime = new DockerRuntime();
+
+      try {
+        const source = new DirectoryQueueSource(queueDir);
+        const loadResult = await source.load();
+        if (!loadResult.ok) {
+          for (const err of loadResult.errors) {
+            log.error(err.message);
+          }
+          Deno.exit(2);
+        }
+        const manifest = loadResult.manifest;
+
+        log.info("Resolving shared resources...");
+        const imageManager = new ImageManager(runtime);
+        const image = await resolveDefaultsImage(manifest.defaults, imageManager);
+        const resolvedEnvVars = await resolveAuth([]);
+        const allowedIPs = await resolveAllowedIPs();
+
+        const queueName = flags.name as string;
+        const logDir = resolve(queueDir, ".logs");
+
+        const itemIds = manifest.items.map((i) => i.id);
+        let renderer: StaticRenderer | QueueTUI;
+        if (useTUI) {
+          renderer = new QueueTUI(itemIds, { verbose: isVerbose, queueName });
+        } else {
+          renderer = new StaticRenderer({ verbose: isVerbose });
+        }
+
+        const controller = new AbortController();
+        Deno.addSignalListener("SIGINT", () => {
+          controller.abort();
+          renderer.setAborting();
+          if (!useTUI) {
+            log.info(`\nInterrupted. Aborting queue...`);
+          }
+        });
+
+        if (useTUI) log.mute();
+        renderer.start();
+
+        const orchestrator = new Orchestrator({
+          source,
+          image,
+          imageResolver: createImageResolver(imageManager),
+          envVars: resolvedEnvVars,
+          allowedIPs,
+          dir: projectDir,
+          logDir,
+          signal: controller.signal,
+          resume: flags.resume as boolean,
+          verbose: isVerbose,
+          suppressSummary: true,
+          runtime,
+          onLine: (itemId, line) => renderer.appendLine(itemId, line),
+          onEvent: (itemId, event) => renderer.update(itemId, event),
+          onItemRunning: (itemId) => renderer.markItemRunning(itemId),
+          onItemCompleted: (itemId, branch) =>
+            renderer.markItemCompleted(itemId, branch),
+          onItemFailed: (itemId, error) => renderer.markItemFailed(itemId, error),
+          onItemBlocked: (itemId, blockedBy) =>
+            renderer.markItemBlocked(itemId, blockedBy),
+        });
+
+        const report = await orchestrator.run();
+        renderer.stop();
+        if (useTUI) log.unmute();
+
+        console.error(renderer.formatSummary());
+        await queueOutput.onQueueComplete(report);
+        console.log(JSON.stringify(report, null, 2));
+
+        const allCompleted = report.items.every((i) => i.status === "completed");
+        Deno.exit(allCompleted ? 0 : 1);
+      } catch (e) {
+        if (e instanceof OrchestratorValidationError) {
+          for (const err of e.errors) {
+            log.error(err.message);
+          }
+          Deno.exit(2);
+        }
+        const msg = e instanceof Error ? e.message : String(e);
+        log.error(`Fatal: ${msg}`);
+        Deno.exit(3);
+      }
+    } else {
+      // ── Discovery mode ────────────────────────────────────────────────────
+      const discovered = await discoverQueues(projectDir);
+      if (discovered.length === 0) {
+        console.error(
+          `Error: no queues found in ${projectDir}/.knox/queues/`,
+        );
+        console.error(
+          "Create a queue directory with .md task files, or use --file or --name.",
+        );
+        Deno.exit(2);
+      }
+
+      const queueDirs = discovered.map((q) => q.path);
+      log.info(`Discovered ${discovered.length} queue(s).`);
+
+      const runtime = new DockerRuntime();
       log.info("Resolving shared resources...");
       const imageManager = new ImageManager(runtime);
-      const image = await resolveDefaultsImage(manifest.defaults, imageManager);
+      const image = await imageManager.ensureFeatureImage({});
       const resolvedEnvVars = await resolveAuth([]);
       const allowedIPs = await resolveAllowedIPs();
-
-      const queueName = basename(queueFilePath).replace(/\.ya?ml$/, "");
-      const logDir = resolve(dirname(queueFilePath), `${queueName}.logs`);
-
-      const itemIds = manifest.items.map((i) => i.id);
-      let renderer: StaticRenderer | QueueTUI;
-      if (useTUI) {
-        renderer = new QueueTUI(itemIds, {
-          verbose: isVerbose,
-          queueName,
-        });
-      } else {
-        renderer = new StaticRenderer({ verbose: isVerbose });
-      }
 
       const controller = new AbortController();
       Deno.addSignalListener("SIGINT", () => {
         controller.abort();
-        renderer.setAborting();
         if (!useTUI) {
-          log.info(`\nInterrupted. Aborting queue...`);
+          log.info(`\nInterrupted. Aborting queues...`);
         }
       });
 
-      if (useTUI) log.mute();
-      renderer.start();
-
-      const orchestrator = new Orchestrator({
-        source,
+      const runner = new MultiQueueRunner({
+        queueDirs,
         image,
         imageResolver: createImageResolver(imageManager),
         envVars: resolvedEnvVars,
         allowedIPs,
         dir: projectDir,
-        logDir,
         signal: controller.signal,
         resume: flags.resume as boolean,
         verbose: isVerbose,
-        suppressSummary: true,
+        useTUI,
         runtime,
-        onLine: (itemId, line) => renderer.appendLine(itemId, line),
-        onEvent: (itemId, event) => renderer.update(itemId, event),
-        onItemRunning: (itemId) => renderer.markItemRunning(itemId),
-        onItemCompleted: (itemId, branch) =>
-          renderer.markItemCompleted(itemId, branch),
-        onItemFailed: (itemId, error) => renderer.markItemFailed(itemId, error),
-        onItemBlocked: (itemId, blockedBy) =>
-          renderer.markItemBlocked(itemId, blockedBy),
+        output: queueOutput,
       });
 
-      const report = await orchestrator.run();
-      renderer.stop();
-      if (useTUI) log.unmute();
+      try {
+        const multiReport = await runner.run();
+        MultiQueueRunner.printCombinedSummary(multiReport);
 
-      console.error(renderer.formatSummary());
+        const allReports = multiReport.queues.map((q) => q.report);
+        console.log(JSON.stringify(allReports, null, 2));
 
-      // Run post-queue output handler
-      await queueOutput.onQueueComplete(report);
-
-      console.log(JSON.stringify(report, null, 2));
-
-      const allCompleted = report.items.every((i) => i.status === "completed");
-      Deno.exit(allCompleted ? 0 : 1);
-    } catch (e) {
-      if (e instanceof OrchestratorValidationError) {
-        for (const err of e.errors) {
-          log.error(err.message);
-        }
-        Deno.exit(2);
+        const allCompleted = allReports.every((r) =>
+          r.items.every((i) => i.status === "completed")
+        );
+        Deno.exit(allCompleted ? 0 : 1);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        log.error(`Fatal: ${msg}`);
+        Deno.exit(3);
       }
-      const msg = e instanceof Error ? e.message : String(e);
-      log.error(`Fatal: ${msg}`);
-      Deno.exit(3);
     }
-  } else if (flags.name) {
-    // ── Named queue mode ─────────────────────────────────────────────────────
-    const queueDir = resolve(projectDir, ".knox", "queues", flags.name as string);
-    try {
-      await Deno.stat(queueDir);
-    } catch {
-      console.error(
-        `Error: queue not found: .knox/queues/${flags.name}/`,
-      );
-      Deno.exit(2);
-    }
+  } else {
+    // ── GitHub source ─────────────────────────────────────────────────────────
+    const { GitHubIssueQueueSource } = await import(
+      "../queue/github_issue_queue_source.ts"
+    );
+    const { defaultCommandRunner } = await import(
+      "../queue/output/pr_queue_output.ts"
+    );
+
+    const statePath = resolve(projectDir, ".knox", "github.state.yaml");
+    const githubDefaults = config.github?.defaults;
+
+    const source = new GitHubIssueQueueSource({
+      cwd: projectDir,
+      statePath,
+      defaults: githubDefaults,
+      runner: defaultCommandRunner,
+    });
 
     const runtime = new DockerRuntime();
 
     try {
-      const source = new DirectoryQueueSource(queueDir);
       const loadResult = await source.load();
       if (!loadResult.ok) {
         for (const err of loadResult.errors) {
@@ -326,8 +517,8 @@ if (effectiveCommand === "init") {
       const resolvedEnvVars = await resolveAuth([]);
       const allowedIPs = await resolveAllowedIPs();
 
-      const queueName = flags.name as string;
-      const logDir = resolve(queueDir, ".logs");
+      const queueName = "github";
+      const logDir = resolve(projectDir, ".knox", "github.logs");
 
       const itemIds = manifest.items.map((i) => i.id);
       let renderer: StaticRenderer | QueueTUI;
@@ -389,68 +580,6 @@ if (effectiveCommand === "init") {
         }
         Deno.exit(2);
       }
-      const msg = e instanceof Error ? e.message : String(e);
-      log.error(`Fatal: ${msg}`);
-      Deno.exit(3);
-    }
-  } else {
-    // ── Discovery mode ───────────────────────────────────────────────────────
-    const discovered = await discoverQueues(projectDir);
-    if (discovered.length === 0) {
-      console.error(
-        `Error: no queues found in ${projectDir}/.knox/queues/`,
-      );
-      console.error(
-        "Create a queue directory with .md task files, or use --file or --name.",
-      );
-      Deno.exit(2);
-    }
-
-    const queueDirs = discovered.map((q) => q.path);
-    log.info(`Discovered ${discovered.length} queue(s).`);
-
-    const runtime = new DockerRuntime();
-    log.info("Resolving shared resources...");
-    const imageManager = new ImageManager(runtime);
-    const image = await imageManager.ensureFeatureImage({});
-    const resolvedEnvVars = await resolveAuth([]);
-    const allowedIPs = await resolveAllowedIPs();
-
-    const controller = new AbortController();
-    Deno.addSignalListener("SIGINT", () => {
-      controller.abort();
-      if (!useTUI) {
-        log.info(`\nInterrupted. Aborting queues...`);
-      }
-    });
-
-    const runner = new MultiQueueRunner({
-      queueDirs,
-      image,
-      imageResolver: createImageResolver(imageManager),
-      envVars: resolvedEnvVars,
-      allowedIPs,
-      dir: projectDir,
-      signal: controller.signal,
-      resume: flags.resume as boolean,
-      verbose: isVerbose,
-      useTUI,
-      runtime,
-      output: queueOutput,
-    });
-
-    try {
-      const multiReport = await runner.run();
-      MultiQueueRunner.printCombinedSummary(multiReport);
-
-      const allReports = multiReport.queues.map((q) => q.report);
-      console.log(JSON.stringify(allReports, null, 2));
-
-      const allCompleted = allReports.every((r) =>
-        r.items.every((i) => i.status === "completed")
-      );
-      Deno.exit(allCompleted ? 0 : 1);
-    } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       log.error(`Fatal: ${msg}`);
       Deno.exit(3);

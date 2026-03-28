@@ -1,5 +1,6 @@
 import { parse as parseYaml } from "@std/yaml";
 import { join } from "@std/path";
+import type { QueueDefaults } from "./types.ts";
 
 /** Knox project configuration loaded from .knox/config.yaml. */
 export interface KnoxConfig {
@@ -9,6 +10,13 @@ export interface KnoxConfig {
   pr?: {
     draft?: boolean;
     base?: string;
+  };
+  /** GitHub Issues queue source configuration. */
+  github?: {
+    /** GitHub usernames whose issues are ingested. Defaults to current gh user. */
+    authors?: string[];
+    /** Queue-level defaults applied to issues missing these fields. */
+    defaults?: QueueDefaults;
   };
 }
 

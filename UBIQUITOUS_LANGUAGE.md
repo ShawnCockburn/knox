@@ -130,12 +130,25 @@
 
 | Term | Definition | Aliases to avoid |
 | ---- | ---------- | ---------------- |
-| **Queue Source** | Interface for loading a Queue and persisting Queue State; the data layer for the Orchestrator — has two implementations: **File Queue Source** and **Directory Queue Source** | Queue loader, queue provider |
+| **Queue Source** (updated) | Interface for loading a Queue and persisting Queue State; the data layer for the Orchestrator — has three implementations: **File Queue Source**, **Directory Queue Source**, and **GitHub Issue Queue Source** | Queue loader, queue provider |
 | **File Queue Source** | YAML-file-backed implementation of Queue Source; reads from `<name>.yaml`, writes state to `<name>.state.yaml` | YAML loader |
 | **Directory Queue Source** | Markdown-directory-backed implementation of Queue Source; reads `.md` files from a directory, optional `_defaults.yaml` for Queue Defaults, state to `.state.yaml` inside the directory | Markdown queue source, directory loader |
 | **Markdown Task Parser** | Pure function that parses a single Markdown task file into a Queue Item or validation errors | Task parser, markdown parser |
-| **Frontmatter** | YAML section at the start of a Markdown task file (between `---` delimiters) containing optional Queue Item overrides: `dependsOn`, `model`, `features`, `prepare`, `image`, `check`, `group`, `maxLoops`, `env`, `cpu`, `memory` | YAML header, metadata |
+| **Frontmatter** (updated) | YAML section at the start of a Markdown task file or GitHub Issue body (between `---` delimiters) containing optional Queue Item overrides: `dependsOn`, `model`, `features`, `prepare`, `image`, `check`, `group`, `maxLoops`, `env`, `cpu`, `memory` | YAML header, metadata |
 | **Task Body** | The Markdown content after Frontmatter; becomes the Queue Item's task description | Task content, body text |
+| **GitHub Issue Queue Source** (new) | Implementation of Queue Source backed by GitHub Issues labeled `agent/knox`; fetches issues via `gh` CLI, parses bodies with the Markdown Task Parser, and builds a Queue Manifest with dependency graph | GitHub source, issue source, remote source |
+| **GitHub Client** (new) | Module wrapping all `gh` CLI interactions (list issues, add/remove labels, close issues, ensure labels); accepts a Command Runner for testability | gh wrapper, GitHub API client |
+| **Command Runner** (new) | An injectable function type `(args, cwd) → { success, stdout, stderr, code }` used by GitHub Client and Pull Request Queue Output for testable CLI execution | Shell runner, process runner |
+| **Issue Mapper** (new) | Module that converts a GitHub Issue into a Queue Item: generates the Item ID, delegates body parsing to the Markdown Task Parser | Issue converter, issue parser |
+| **Item ID** (new) | The unique identifier for a Queue Item derived from a GitHub Issue, formatted as `gh-<number>-<slugified-title>` with a 50-character title portion cap | Issue ID, task ID |
+| **Slugify** (new) | The process of transforming a GitHub Issue title into a URL-safe slug: lowercase, non-alphanumeric→hyphens, collapse consecutive hyphens, trim leading/trailing hyphens, cap at 50 characters | Normalize, sanitize, kebab-case |
+
+## GitHub Issue Labels (new)
+
+| Term | Definition | Aliases to avoid |
+| ---- | ---------- | ---------------- |
+| **agent/knox Label** (new) | A user-managed GitHub label that marks an issue as eligible for Knox ingestion; Knox queries for it but never adds or removes it | Knox label, trigger label |
+| **Knox Labels** (new) | The set of Knox-managed GitHub labels (`knox/claimed`, `knox/running`, `knox/failed`, `knox/blocked`) auto-created by Knox on first use; Knox owns their lifecycle | Status labels, lifecycle labels |
 
 ## Queue Output
 
@@ -158,8 +171,9 @@
 
 | Term | Definition | Aliases to avoid |
 | ---- | ---------- | ---------------- |
-| **Knox Config** | Project-level configuration loaded from `.knox/config.yaml`; defines `output` strategy and `pr` options | Project config, config file (too generic) |
+| **Knox Config** (updated) | Project-level configuration loaded from `.knox/config.yaml`; defines `output` strategy, `pr` options, and `github` section (authors list and queue defaults) | Project config, config file (too generic) |
 | **Output Strategy** | Enum value `"branch"` or `"pr"` determining how Knox results are delivered; configurable via `.knox/config.yaml` or `--output` CLI flag (flag takes precedence) | Output type, delivery mode |
+| **Source Flag** (new) | The required `--source` CLI flag on `knox queue`, accepting `directory` or `github`; replaced implicit directory auto-detection as a breaking change | Source type, queue type |
 
 ## Queue TUI
 
@@ -269,11 +283,27 @@
   callback
 - **Knox Config** is loaded from `.knox/config.yaml`; **Output Strategy** can be
   overridden by CLI `--output` flag (flag wins over config)
-- The CLI has three queue modes: `--file` (File Queue Source), `--name`
-  (Directory Queue Source for a specific queue), and discovery mode (Multi-Queue
-  Runner over all Discovered Queues)
+- The CLI requires a **Source Flag** (`--source directory` or `--source github`)
+  on the `knox queue` command (updated)
+- Within `--source directory`, three modes exist: `--file` (File Queue Source),
+  `--name` (Directory Queue Source for a specific queue), and bare (Queue
+  Discovery + Multi-Queue Runner over all Discovered Queues) (updated)
+- A **GitHub Issue Queue Source** fetches issues via the **GitHub Client**, maps
+  them via the **Issue Mapper**, validates the resulting manifest, and persists
+  state to `.knox/github.state.yaml` (new)
+- Each GitHub Issue's **Item ID** is `gh-<number>-<slugified-title>`, derived by
+  the **Issue Mapper** using **Slugify** (new)
+- The **GitHub Client** accepts a **Command Runner** for testability, matching
+  the pattern established by **Pull Request Queue Output** (new)
+- **Knox Labels** are auto-created by the **GitHub Client** on first use; the
+  **agent/knox Label** is never modified by Knox (new)
+- On completion, the **GitHub Issue Queue Source** closes the issue and removes
+  the `knox/claimed` label via the **GitHub Client** (new)
+- The `github.defaults` section in **Knox Config** provides **Queue Defaults**
+  for **GitHub Issue Queue Source**, identical in shape to `_defaults.yaml` for
+  **Directory Queue Source** (new)
 
-## Example dialogue (updated)
+## Example dialogue (updated — GitHub Issue Queue Source)
 
 > **Dev:** "How do I set up the environment for my tasks? I need Python and Deno."
 > **Domain expert:** "Declare **Features** in your queue. In `_defaults.yaml`,
@@ -322,6 +352,26 @@
 > to transitively mark all downstream dependents as **Blocked**. Independent items
 > keep running. So in a diamond — A feeds B and C, both feed D — if B fails, D is
 > **Blocked** but C still runs."
+>
+> **Dev:** "I want my team to file issues on GitHub and have Knox pick them up.
+> How does that work?" (new)
+> **Domain expert:** "Use the **GitHub Issue Queue Source** via `knox queue
+> --source github`. Any open issue with the **agent/knox Label** becomes a
+> **Queue Item**. The issue body is parsed through the same **Markdown Task
+> Parser** — put **Frontmatter** at the top for `model`, `dependsOn`, etc., and
+> the rest is the **Task Body**."
+>
+> **Dev:** "How does Knox identify each issue internally?"
+> **Domain expert:** "The **Issue Mapper** generates an **Item ID** in the format
+> `gh-<number>-<slugified-title>` — e.g., `gh-42-add-oauth-support`. The title is
+> run through **Slugify**: lowercase, special chars to hyphens, capped at 50
+> characters. This **Item ID** appears in logs, branch names, and **Queue State**."
+>
+> **Dev:** "What labels does Knox manage?"
+> **Domain expert:** "Knox auto-creates the **Knox Labels** — `knox/claimed`,
+> `knox/running`, `knox/failed`, `knox/blocked` — on first use. It never touches
+> the **agent/knox Label** — that's yours to add and remove. When a task completes,
+> Knox closes the issue and removes `knox/claimed`."
 
 ## Flagged ambiguities
 
@@ -411,10 +461,10 @@
   different layers. **Queue Source** loads queue manifests (data layer). **Source
   Provider** prepares git source for containers (engine layer). The word "source"
   alone is ambiguous — always use the full term.
-- **"queue" CLI modes**: The `knox queue` command has three mutually exclusive
-  modes: `--file` (File Queue Source), `--name` (Directory Queue Source for a
-  named queue), and bare (Queue Discovery + Multi-Queue Runner). These are not
-  interchangeable.
+- **"queue" CLI modes** (updated): The `knox queue` command now requires a
+  **Source Flag** (`--source directory` or `--source github`). Within `--source
+  directory`, three modes exist: `--file`, `--name`, and bare discovery. Running
+  `knox queue` without `--source` is an error with migration instructions.
 - **"features" vs "Feature"** (new): Lowercase `features` is the YAML/config
   field (an array of strings). Capitalized **Feature** is the domain concept — a
   Knox-maintained install script with metadata. In code, `FeatureConfigEntry` is
@@ -425,3 +475,17 @@
   (`env` field on Queue Item), or the host system. Use **Environment Config**
   when referring to the container setup declaration. Use "env vars" or
   "environment variables" for the `env` field.
+- **"source" (three meanings)** (new): The word "source" now has three distinct
+  meanings: **Queue Source** (the data layer interface), **Source Provider** (the
+  git cloning mechanism), and **Source Flag** (the `--source` CLI argument).
+  Always use the full term. In particular, `--source github` selects a **Queue
+  Source** implementation — it has nothing to do with **Source Provider**.
+- **"label"** (new): In the GitHub Issues context, two label categories exist:
+  the **agent/knox Label** (user-managed, Knox read-only) and **Knox Labels**
+  (Knox-managed, auto-created). Do not call all of them "Knox labels" — the
+  **agent/knox Label** is explicitly outside Knox's write domain.
+- **"item ID" vs "issue number"** (new): A GitHub Issue has both a number
+  (`#42`) and an **Item ID** (`gh-42-add-oauth-support`). The number is
+  GitHub's identifier; the **Item ID** is Knox's. Use "issue number" for
+  GitHub-facing operations (labels, close) and **Item ID** for Knox-internal
+  operations (state, logs, branches).

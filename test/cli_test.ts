@@ -1,4 +1,8 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
+import { dirname, fromFileUrl, resolve } from "@std/path";
+
+const PROJECT_ROOT = resolve(dirname(fromFileUrl(import.meta.url)), "..");
+const CLI_PATH = resolve(PROJECT_ROOT, "src/cli/cli.ts");
 
 Deno.test("CLI", async (t) => {
   await t.step("exits with code 2 when no subcommand", async () => {
@@ -7,7 +11,7 @@ Deno.test("CLI", async (t) => {
         "run",
         "--allow-read",
         "--allow-env",
-        "src/cli/cli.ts",
+        CLI_PATH,
       ],
       stdout: "piped",
       stderr: "piped",
@@ -24,7 +28,7 @@ Deno.test("CLI", async (t) => {
         "run",
         "--allow-read",
         "--allow-env",
-        "src/cli/cli.ts",
+        CLI_PATH,
         "bogus",
       ],
       stdout: "piped",
@@ -42,7 +46,7 @@ Deno.test("CLI", async (t) => {
         "run",
         "--allow-read",
         "--allow-env",
-        "src/cli/cli.ts",
+        CLI_PATH,
         "run",
       ],
       stdout: "piped",
@@ -60,7 +64,7 @@ Deno.test("CLI", async (t) => {
         "run",
         "--allow-read",
         "--allow-env",
-        "src/cli/cli.ts",
+        CLI_PATH,
         "--task",
         "test",
         "--max-loops",
@@ -81,7 +85,7 @@ Deno.test("CLI", async (t) => {
         "run",
         "--allow-read",
         "--allow-env",
-        "src/cli/cli.ts",
+        CLI_PATH,
         "run",
         "--task",
         "test",
@@ -99,14 +103,34 @@ Deno.test("CLI", async (t) => {
 
   // ── queue --file mode ────────────────────────────────────────────────────
 
+  await t.step("knox queue without --source shows migration error", async () => {
+    const cmd = new Deno.Command("deno", {
+      args: [
+        "run",
+        "--allow-read",
+        "--allow-env",
+        CLI_PATH,
+        "queue",
+      ],
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const result = await cmd.output();
+    assertEquals(result.code, 2);
+    const stderr = new TextDecoder().decode(result.stderr);
+    assertStringIncludes(stderr, "--source is required");
+  });
+
   await t.step("knox queue --file with nonexistent file shows error", async () => {
     const cmd = new Deno.Command("deno", {
       args: [
         "run",
         "--allow-read",
         "--allow-env",
-        "src/cli/cli.ts",
+        CLI_PATH,
         "queue",
+        "--source",
+        "directory",
         "--file",
         "/tmp/nonexistent-knox-queue.json",
       ],
@@ -122,7 +146,7 @@ Deno.test("CLI", async (t) => {
   // ── queue discovery mode ─────────────────────────────────────────────────
 
   await t.step(
-    "knox queue (no args) errors when no queues found in .knox/queues/",
+    "knox queue --source directory (no args) errors when no queues found in .knox/queues/",
     async () => {
       // Run from /tmp so there is no .knox/queues/ directory
       const cmd = new Deno.Command("deno", {
@@ -130,8 +154,10 @@ Deno.test("CLI", async (t) => {
           "run",
           "--allow-read",
           "--allow-env",
-          "src/cli/cli.ts",
+          CLI_PATH,
           "queue",
+          "--source",
+          "directory",
         ],
         stdout: "piped",
         stderr: "piped",
@@ -145,7 +171,7 @@ Deno.test("CLI", async (t) => {
   );
 
   await t.step(
-    "knox queue (no args) discovers queues in .knox/queues/",
+    "knox queue --source directory (no args) discovers queues in .knox/queues/",
     async () => {
       // Create a temp dir with a valid queue under .knox/queues/
       const tmpDir = await Deno.makeTempDir();
@@ -153,8 +179,8 @@ Deno.test("CLI", async (t) => {
         const queueDir = `${tmpDir}/.knox/queues/my-queue`;
         await Deno.mkdir(queueDir, { recursive: true });
         await Deno.writeTextFile(
-          `${queueDir}/queue.yaml`,
-          `items:\n  - id: task-1\n    task: "echo hello"\n`,
+          `${queueDir}/task-1.md`,
+          `echo hello`,
         );
 
         // Run CLI — it will fail at the docker/image stage but must get past
@@ -164,8 +190,10 @@ Deno.test("CLI", async (t) => {
             "run",
             "--allow-read",
             "--allow-env",
-            "src/cli/cli.ts",
+            CLI_PATH,
             "queue",
+            "--source",
+            "directory",
           ],
           stdout: "piped",
           stderr: "piped",
@@ -194,15 +222,17 @@ Deno.test("CLI", async (t) => {
   // ── queue --name mode ────────────────────────────────────────────────────
 
   await t.step(
-    "knox queue --name errors when named queue does not exist",
+    "knox queue --source directory --name errors when named queue does not exist",
     async () => {
       const cmd = new Deno.Command("deno", {
         args: [
           "run",
           "--allow-read",
           "--allow-env",
-          "src/cli/cli.ts",
+          CLI_PATH,
           "queue",
+          "--source",
+          "directory",
           "--name",
           "nonexistent-queue",
         ],
@@ -218,15 +248,15 @@ Deno.test("CLI", async (t) => {
   );
 
   await t.step(
-    "knox queue --name finds existing named queue",
+    "knox queue --source directory --name finds existing named queue",
     async () => {
       const tmpDir = await Deno.makeTempDir();
       try {
         const queueDir = `${tmpDir}/.knox/queues/my-queue`;
         await Deno.mkdir(queueDir, { recursive: true });
         await Deno.writeTextFile(
-          `${queueDir}/queue.yaml`,
-          `items:\n  - id: task-1\n    task: "echo hello"\n`,
+          `${queueDir}/task-1.md`,
+          `echo hello`,
         );
 
         const cmd = new Deno.Command("deno", {
@@ -234,8 +264,10 @@ Deno.test("CLI", async (t) => {
             "run",
             "--allow-read",
             "--allow-env",
-            "src/cli/cli.ts",
+            CLI_PATH,
             "queue",
+            "--source",
+            "directory",
             "--name",
             "my-queue",
           ],
@@ -260,7 +292,7 @@ Deno.test("CLI", async (t) => {
   // ── --output flag ────────────────────────────────────────────────────────
 
   await t.step(
-    "knox queue --output pr is accepted (does not cause early exit-2)",
+    "knox queue --source directory --output pr is accepted (does not cause early exit-2)",
     async () => {
       // Run from /tmp where there is no .knox/queues — discovery fails with
       // exit 2 due to "no queues found", NOT due to bad --output flag.
@@ -269,8 +301,10 @@ Deno.test("CLI", async (t) => {
           "run",
           "--allow-read",
           "--allow-env",
-          "src/cli/cli.ts",
+          CLI_PATH,
           "queue",
+          "--source",
+          "directory",
           "--output",
           "pr",
         ],
@@ -295,7 +329,7 @@ Deno.test("CLI", async (t) => {
           "run",
           "--allow-read",
           "--allow-env",
-          "src/cli/cli.ts",
+          CLI_PATH,
           "run",
           "--output",
           "pr",
@@ -313,7 +347,7 @@ Deno.test("CLI", async (t) => {
   // ── config loading ───────────────────────────────────────────────────────
 
   await t.step(
-    "knox queue reads .knox/config.yaml output strategy",
+    "knox queue --source directory reads .knox/config.yaml output strategy",
     async () => {
       const tmpDir = await Deno.makeTempDir();
       try {
@@ -329,8 +363,10 @@ Deno.test("CLI", async (t) => {
             "run",
             "--allow-read",
             "--allow-env",
-            "src/cli/cli.ts",
+            CLI_PATH,
             "queue",
+            "--source",
+            "directory",
           ],
           stdout: "piped",
           stderr: "piped",
@@ -355,7 +391,7 @@ Deno.test("CLI", async (t) => {
         "run",
         "--allow-read",
         "--allow-env",
-        "src/cli/cli.ts",
+        CLI_PATH,
         "queue",
         "--help",
       ],
