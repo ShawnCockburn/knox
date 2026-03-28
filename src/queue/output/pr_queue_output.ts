@@ -14,7 +14,9 @@ export interface PullRequestOutputOptions {
 export type CommandRunner = (
   args: string[],
   cwd: string,
-) => Promise<{ success: boolean; stdout: string; stderr: string; code: number }>;
+) => Promise<
+  { success: boolean; stdout: string; stderr: string; code: number }
+>;
 
 export async function defaultCommandRunner(
   args: string[],

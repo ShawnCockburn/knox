@@ -42,23 +42,26 @@ Do thing B
     }
   });
 
-  await t.step("reads _defaults.yaml and merges into manifest defaults", async () => {
-    const { dir } = await setup({
-      "a.md": "Do thing A",
-      "_defaults.yaml": "model: opus\nmaxLoops: 5\n",
-    });
-    try {
-      const source = new DirectoryQueueSource(dir);
-      const result = await source.load();
-      assertEquals(result.ok, true);
-      if (result.ok) {
-        assertEquals(result.manifest.defaults!.model, "opus");
-        assertEquals(result.manifest.defaults!.maxLoops, 5);
+  await t.step(
+    "reads _defaults.yaml and merges into manifest defaults",
+    async () => {
+      const { dir } = await setup({
+        "a.md": "Do thing A",
+        "_defaults.yaml": "model: opus\nmaxLoops: 5\n",
+      });
+      try {
+        const source = new DirectoryQueueSource(dir);
+        const result = await source.load();
+        assertEquals(result.ok, true);
+        if (result.ok) {
+          assertEquals(result.manifest.defaults!.model, "opus");
+          assertEquals(result.manifest.defaults!.maxLoops, 5);
+        }
+      } finally {
+        await cleanup(dir);
       }
-    } finally {
-      await cleanup(dir);
-    }
-  });
+    },
+  );
 
   await t.step("works without _defaults.yaml", async () => {
     const { dir } = await setup({
@@ -99,65 +102,71 @@ Do thing B
     }
   });
 
-  await t.step("returns validation errors for broken dependsOn references", async () => {
-    const { dir } = await setup({
-      "a.md": `---
+  await t.step(
+    "returns validation errors for broken dependsOn references",
+    async () => {
+      const { dir } = await setup({
+        "a.md": `---
 dependsOn:
   - nonexistent
 ---
 Task A
 `,
-    });
-    try {
-      const source = new DirectoryQueueSource(dir);
-      const result = await source.load();
-      assertEquals(result.ok, false);
-      if (!result.ok) {
-        assertEquals(result.errors.length >= 1, true);
-        assertStringIncludes(result.errors[0].message, "nonexistent");
-      }
-    } finally {
-      await cleanup(dir);
-    }
-  });
-
-  await t.step("state sidecar .state.yaml read/write/update roundtrip", async () => {
-    const { dir } = await setup({
-      "a.md": "Task A",
-      "b.md": "Task B",
-    });
-    try {
-      const source = new DirectoryQueueSource(dir);
-
-      // No state file initially
-      assertEquals(await source.readState(), null);
-
-      // Write state
-      await source.writeState({
-        queueRunId: "run-abc",
-        startedAt: "2026-01-01T00:00:00Z",
-        items: {
-          a: { status: "completed", startedAt: "2026-01-01T00:00:00Z" },
-        },
       });
+      try {
+        const source = new DirectoryQueueSource(dir);
+        const result = await source.load();
+        assertEquals(result.ok, false);
+        if (!result.ok) {
+          assertEquals(result.errors.length >= 1, true);
+          assertStringIncludes(result.errors[0].message, "nonexistent");
+        }
+      } finally {
+        await cleanup(dir);
+      }
+    },
+  );
 
-      const state = await source.readState();
-      assertEquals(state!.queueRunId, "run-abc");
-      assertEquals(state!.items["a"].status, "completed");
+  await t.step(
+    "state sidecar .state.yaml read/write/update roundtrip",
+    async () => {
+      const { dir } = await setup({
+        "a.md": "Task A",
+        "b.md": "Task B",
+      });
+      try {
+        const source = new DirectoryQueueSource(dir);
 
-      // Update an item
-      await source.update("b", { status: "in_progress" });
-      const updated = await source.readState();
-      assertEquals(updated!.items["a"].status, "completed");
-      assertEquals(updated!.items["b"].status, "in_progress");
+        // No state file initially
+        assertEquals(await source.readState(), null);
 
-      // Verify state file lives inside the directory
-      assertStringIncludes(source.getStatePath(), dir);
-      assertStringIncludes(source.getStatePath(), ".state.yaml");
-    } finally {
-      await cleanup(dir);
-    }
-  });
+        // Write state
+        await source.writeState({
+          queueRunId: "run-abc",
+          startedAt: "2026-01-01T00:00:00Z",
+          items: {
+            a: { status: "completed", startedAt: "2026-01-01T00:00:00Z" },
+          },
+        });
+
+        const state = await source.readState();
+        assertEquals(state!.queueRunId, "run-abc");
+        assertEquals(state!.items["a"].status, "completed");
+
+        // Update an item
+        await source.update("b", { status: "in_progress" });
+        const updated = await source.readState();
+        assertEquals(updated!.items["a"].status, "completed");
+        assertEquals(updated!.items["b"].status, "in_progress");
+
+        // Verify state file lives inside the directory
+        assertStringIncludes(source.getStatePath(), dir);
+        assertStringIncludes(source.getStatePath(), ".state.yaml");
+      } finally {
+        await cleanup(dir);
+      }
+    },
+  );
 
   await t.step("empty directory returns an error", async () => {
     const { dir } = await setup({});
@@ -174,23 +183,26 @@ Task A
     }
   });
 
-  await t.step("file ordering is deterministic (sorted by filename)", async () => {
-    const { dir } = await setup({
-      "c.md": "Task C",
-      "a.md": "Task A",
-      "b.md": "Task B",
-    });
-    try {
-      const source = new DirectoryQueueSource(dir);
-      const result = await source.load();
-      assertEquals(result.ok, true);
-      if (result.ok) {
-        assertEquals(result.manifest.items.map((i) => i.id), ["a", "b", "c"]);
+  await t.step(
+    "file ordering is deterministic (sorted by filename)",
+    async () => {
+      const { dir } = await setup({
+        "c.md": "Task C",
+        "a.md": "Task A",
+        "b.md": "Task B",
+      });
+      try {
+        const source = new DirectoryQueueSource(dir);
+        const result = await source.load();
+        assertEquals(result.ok, true);
+        if (result.ok) {
+          assertEquals(result.manifest.items.map((i) => i.id), ["a", "b", "c"]);
+        }
+      } finally {
+        await cleanup(dir);
       }
-    } finally {
-      await cleanup(dir);
-    }
-  });
+    },
+  );
 
   await t.step("update() preserves existing state entries", async () => {
     const { dir } = await setup({

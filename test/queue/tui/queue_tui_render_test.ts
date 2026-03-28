@@ -22,13 +22,21 @@ Deno.test("Phase 1: overwrite-in-place rendering", async (t) => {
 
     // Find the render write (after the hide-cursor write)
     const renderWrite = writes.find((w) => w.includes("\r\x1b[2K"));
-    assert(renderWrite, "render output should contain \\r\\x1b[2K line prefixes");
+    assert(
+      renderWrite,
+      "render output should contain \\r\\x1b[2K line prefixes",
+    );
 
     // Each content line should be prefixed with \r\x1b[2K
     const linePrefix = "\r\x1b[2K";
-    const lines = renderWrite!.split("\n").filter((l) => l.startsWith(linePrefix));
+    const lines = renderWrite!.split("\n").filter((l) =>
+      l.startsWith(linePrefix)
+    );
     // At least header + 2 items = 3 lines
-    assert(lines.length >= 3, `expected at least 3 prefixed lines, got ${lines.length}`);
+    assert(
+      lines.length >= 3,
+      `expected at least 3 prefixed lines, got ${lines.length}`,
+    );
 
     // Should NOT contain the old clear-all pattern (cursor-up, clear, cursor-up)
     const fullOutput = writes.join("");
@@ -63,8 +71,14 @@ Deno.test("Phase 1: overwrite-in-place rendering", async (t) => {
     // The stop() render should produce exactly one write call for the frame
     // (plus the show-cursor and newline writes)
     // Count writes that contain \r\x1b[2K (frame writes)
-    const frameWrites = writes.slice(preCount).filter((w) => w.includes("\r\x1b[2K"));
-    assertEquals(frameWrites.length, 1, "stop() should produce exactly one frame write");
+    const frameWrites = writes.slice(preCount).filter((w) =>
+      w.includes("\r\x1b[2K")
+    );
+    assertEquals(
+      frameWrites.length,
+      1,
+      "stop() should produce exactly one frame write",
+    );
   });
 
   await t.step("orphan lines cleared when frame shrinks", () => {
@@ -117,79 +131,86 @@ Deno.test("Phase 1: overwrite-in-place rendering", async (t) => {
 
     // Count the number of lines in the frame (lines ending with \n)
     const lineCount = (renderWrite!.match(/\r\x1b\[2K[^\n]*\n/g) || []).length;
-    assert(lineCount <= 9, `frame should be at most 9 lines (rows-1), got ${lineCount}`);
-
-    tui.stop();
-  });
-
-  await t.step("orphan lines cleared when frame shrinks between renders", () => {
-    const { writes, writeFn } = createCapture();
-    // Start with a large terminal so all items show
-    const tui = new QueueTUI(["a", "b", "c", "d", "e"], {
-      verbose: false,
-      columns: 80,
-      rows: 30,
-      write: writeFn,
-    });
-
-    tui.start(); // renders header + 5 items = 6 lines
-
-    // Record writes so far
-    const firstRenderIdx = writes.length;
-
-    // Mark items as completed (they still render but let's reduce via blocking)
-    // Actually the best test: call stop() which does a final render.
-    // Since the frame doesn't shrink, let's test a different way.
-
-    // Instead: create a fresh TUI with 2 items (shorter frame) but
-    // manually set lastLineCount to simulate a previous taller frame.
-    // We can't do this directly since lastLineCount is private.
-
-    // Better: just verify the orphan-clearing escape sequences appear
-    // when they should. Let's create a TUI, render once at 6 lines,
-    // then re-render at a smaller terminal size.
-
-    tui.stop();
-
-    // Create a new TUI that simulates frame shrinkage by having
-    // a tall initial frame followed by a shorter one
-    const { writes: writes2, writeFn: writeFn2 } = createCapture();
-    const tui2 = new QueueTUI(["x", "y", "z"], {
-      verbose: true, // verbose adds log panel which can make frame taller
-      columns: 80,
-      rows: 30,
-      write: writeFn2,
-    });
-
-    // Add some log lines to make frame taller on first render
-    tui2.appendLine("x", "log line 1");
-    tui2.appendLine("x", "log line 2");
-    tui2.appendLine("x", "log line 3");
-    tui2.update("x", { type: "container:created", containerId: "c1" });
-
-    tui2.start(); // first render: header + 3 items + separator + 3 log lines = 8 lines
-    const firstFrameWrite = writes2.find((w) => w.includes("\r\x1b[2K"));
-    const firstLineCount = (firstFrameWrite!.match(/\r\x1b\[2K[^\n]*\n/g) || []).length;
-
-    // Clear the log buffer to make the next frame shorter
-    // We can't clear the buffer directly, but we can stop verbose
-    // Actually, let's just stop — stop does a final render
-    // The frame should be the same size, but let's verify the mechanism
-
-    writes2.length = 0;
-    tui2.stop();
-
-    // The stop() render should include cursor-up for the previous frame
-    const stopWrite = writes2.find((w) => w.includes("\r\x1b[2K"));
-    assert(stopWrite, "stop should produce a frame write");
-
-    // If no orphan clearing needed, there should be no extra clear lines
-    // The key assertion is that the mechanism exists — tested via escape codes
     assert(
-      stopWrite!.includes(`\x1b[${firstLineCount}A`),
-      "should cursor-up by previous frame height",
+      lineCount <= 9,
+      `frame should be at most 9 lines (rows-1), got ${lineCount}`,
     );
+
+    tui.stop();
   });
+
+  await t.step(
+    "orphan lines cleared when frame shrinks between renders",
+    () => {
+      const { writes, writeFn } = createCapture();
+      // Start with a large terminal so all items show
+      const tui = new QueueTUI(["a", "b", "c", "d", "e"], {
+        verbose: false,
+        columns: 80,
+        rows: 30,
+        write: writeFn,
+      });
+
+      tui.start(); // renders header + 5 items = 6 lines
+
+      // Record writes so far
+      const firstRenderIdx = writes.length;
+
+      // Mark items as completed (they still render but let's reduce via blocking)
+      // Actually the best test: call stop() which does a final render.
+      // Since the frame doesn't shrink, let's test a different way.
+
+      // Instead: create a fresh TUI with 2 items (shorter frame) but
+      // manually set lastLineCount to simulate a previous taller frame.
+      // We can't do this directly since lastLineCount is private.
+
+      // Better: just verify the orphan-clearing escape sequences appear
+      // when they should. Let's create a TUI, render once at 6 lines,
+      // then re-render at a smaller terminal size.
+
+      tui.stop();
+
+      // Create a new TUI that simulates frame shrinkage by having
+      // a tall initial frame followed by a shorter one
+      const { writes: writes2, writeFn: writeFn2 } = createCapture();
+      const tui2 = new QueueTUI(["x", "y", "z"], {
+        verbose: true, // verbose adds log panel which can make frame taller
+        columns: 80,
+        rows: 30,
+        write: writeFn2,
+      });
+
+      // Add some log lines to make frame taller on first render
+      tui2.appendLine("x", "log line 1");
+      tui2.appendLine("x", "log line 2");
+      tui2.appendLine("x", "log line 3");
+      tui2.update("x", { type: "container:created", containerId: "c1" });
+
+      tui2.start(); // first render: header + 3 items + separator + 3 log lines = 8 lines
+      const firstFrameWrite = writes2.find((w) => w.includes("\r\x1b[2K"));
+      const firstLineCount =
+        (firstFrameWrite!.match(/\r\x1b\[2K[^\n]*\n/g) || []).length;
+
+      // Clear the log buffer to make the next frame shorter
+      // We can't clear the buffer directly, but we can stop verbose
+      // Actually, let's just stop — stop does a final render
+      // The frame should be the same size, but let's verify the mechanism
+
+      writes2.length = 0;
+      tui2.stop();
+
+      // The stop() render should include cursor-up for the previous frame
+      const stopWrite = writes2.find((w) => w.includes("\r\x1b[2K"));
+      assert(stopWrite, "stop should produce a frame write");
+
+      // If no orphan clearing needed, there should be no extra clear lines
+      // The key assertion is that the mechanism exists — tested via escape codes
+      assert(
+        stopWrite!.includes(`\x1b[${firstLineCount}A`),
+        "should cursor-up by previous frame height",
+      );
+    },
+  );
 });
 
 Deno.test("Phase 2 TUI: abort feedback", async (t) => {
@@ -232,32 +253,35 @@ Deno.test("Phase 2 TUI: abort feedback", async (t) => {
     tui.stop(); // cleanup
   });
 
-  await t.step("after stop() with aborting set, header contains [Aborted]", () => {
-    const { writes, writeFn } = createCapture();
-    const tui = new QueueTUI(["item-a"], {
-      verbose: false,
-      columns: 80,
-      rows: 24,
-      write: writeFn,
-    });
+  await t.step(
+    "after stop() with aborting set, header contains [Aborted]",
+    () => {
+      const { writes, writeFn } = createCapture();
+      const tui = new QueueTUI(["item-a"], {
+        verbose: false,
+        columns: 80,
+        rows: 24,
+        write: writeFn,
+      });
 
-    tui.start();
-    writes.length = 0;
+      tui.start();
+      writes.length = 0;
 
-    tui.setAborting();
-    tui.stop();
+      tui.setAborting();
+      tui.stop();
 
-    const output = writes.join("");
-    assert(
-      output.includes("[Aborted]"),
-      "stop render should show [Aborted] in header",
-    );
-    // Should NOT show [Aborting...] in the final frame
-    assert(
-      !output.includes("[Aborting...]"),
-      "final frame should not show [Aborting...]",
-    );
-  });
+      const output = writes.join("");
+      assert(
+        output.includes("[Aborted]"),
+        "stop render should show [Aborted] in header",
+      );
+      // Should NOT show [Aborting...] in the final frame
+      assert(
+        !output.includes("[Aborting...]"),
+        "final frame should not show [Aborting...]",
+      );
+    },
+  );
 });
 
 Deno.test("Phase 3 TUI: formatSummary", async (t) => {
@@ -275,8 +299,14 @@ Deno.test("Phase 3 TUI: formatSummary", async (t) => {
     tui.markItemCompleted("b", "knox/branch-b");
 
     const summary = tui.formatSummary();
-    assert(summary.startsWith("Completed:"), `expected 'Completed:' prefix, got: ${summary}`);
-    assert(summary.includes("2 completed"), `expected '2 completed', got: ${summary}`);
+    assert(
+      summary.startsWith("Completed:"),
+      `expected 'Completed:' prefix, got: ${summary}`,
+    );
+    assert(
+      summary.includes("2 completed"),
+      `expected '2 completed', got: ${summary}`,
+    );
   });
 
   await t.step("Failed prefix when any item failed", () => {
@@ -293,7 +323,10 @@ Deno.test("Phase 3 TUI: formatSummary", async (t) => {
     tui.markItemFailed("b", "container OOM");
 
     const summary = tui.formatSummary();
-    assert(summary.startsWith("Failed:"), `expected 'Failed:' prefix, got: ${summary}`);
+    assert(
+      summary.startsWith("Failed:"),
+      `expected 'Failed:' prefix, got: ${summary}`,
+    );
     assert(summary.includes("1 completed"), summary);
     assert(summary.includes("1 failed"), summary);
   });
@@ -312,7 +345,10 @@ Deno.test("Phase 3 TUI: formatSummary", async (t) => {
     tui.update("b", { type: "aborted" });
 
     const summary = tui.formatSummary();
-    assert(summary.startsWith("Aborted:"), `expected 'Aborted:' prefix, got: ${summary}`);
+    assert(
+      summary.startsWith("Aborted:"),
+      `expected 'Aborted:' prefix, got: ${summary}`,
+    );
     assert(summary.includes("1 completed"), summary);
     assert(summary.includes("1 aborted"), summary);
   });
@@ -330,6 +366,9 @@ Deno.test("Phase 3 TUI: formatSummary", async (t) => {
 
     const summary = tui.formatSummary();
     // Should end with elapsed time in parentheses
-    assert(summary.match(/\(\d+s\)$/), `expected elapsed time, got: ${summary}`);
+    assert(
+      summary.match(/\(\d+s\)$/),
+      `expected elapsed time, got: ${summary}`,
+    );
   });
 });

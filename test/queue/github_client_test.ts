@@ -86,7 +86,9 @@ Deno.test("GitHubClient — listIssues calls gh issue list with correct args", a
   assertEquals(result[0].title, "Test issue");
 
   // Verify correct args were passed
-  const listCall = calls.find((c) => c.args[1] === "issue" && c.args[2] === "list")!;
+  const listCall = calls.find((c) =>
+    c.args[1] === "issue" && c.args[2] === "list"
+  )!;
   assertEquals(listCall.args.includes("--label"), true);
   assertEquals(listCall.args.includes("agent/knox"), true);
   assertEquals(listCall.args.includes("--state"), true);
@@ -102,7 +104,11 @@ Deno.test("GitHubClient — listIssues throws on failure", async () => {
     code: 1,
   }));
   const client = new GitHubClient("/repo", runner);
-  await assertRejects(() => client.listIssues(), Error, "Failed to list issues");
+  await assertRejects(
+    () => client.listIssues(),
+    Error,
+    "Failed to list issues",
+  );
 });
 
 Deno.test("GitHubClient — addLabel calls gh issue edit with --add-label", async () => {

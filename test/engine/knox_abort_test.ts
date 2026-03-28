@@ -5,7 +5,10 @@ import { MockRuntime } from "../runtime/mock_runtime.ts";
 import type { SourceProvider } from "../../src/engine/source/source_provider.ts";
 import { SourceStrategy } from "../../src/engine/source/source_provider.ts";
 import type { PrepareResult } from "../../src/engine/source/source_provider.ts";
-import type { ResultSink, SinkResult } from "../../src/engine/sink/result_sink.ts";
+import type {
+  ResultSink,
+  SinkResult,
+} from "../../src/engine/sink/result_sink.ts";
 import { SinkStrategy } from "../../src/engine/sink/result_sink.ts";
 import type { KnoxEvent } from "../../src/shared/types.ts";
 
@@ -137,7 +140,10 @@ Deno.test("Engine abort: dispose is triggered by abort signal", async () => {
 
   // dispose() calls runtime.remove() — it should be called
   // (once from abort listener, once from finally — but dispose is idempotent)
-  assert(removeCalls.length >= 1, "dispose should have been called at least once");
+  assert(
+    removeCalls.length >= 1,
+    "dispose should have been called at least once",
+  );
 });
 
 Deno.test("Engine abort: pre-container abort returns abort result", async () => {

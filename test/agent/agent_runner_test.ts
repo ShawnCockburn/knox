@@ -152,14 +152,25 @@ Deno.test("AgentRunner", async (t) => {
     // Use exec override to control results precisely
     let execCallCount = 0;
     runtime.exec = (container, command, options) => {
-      runtime.calls.push({ method: "exec", args: [container, command, options] });
+      runtime.calls.push({
+        method: "exec",
+        args: [container, command, options],
+      });
       execCallCount++;
       // Call 1: mkdir, 2: chown, 3: cat progress, 4: git log, 5: hasDirtyTree
       if (execCallCount === 3) {
-        return Promise.resolve({ exitCode: 0, stdout: "## Loop 1\nDid stuff", stderr: "" });
+        return Promise.resolve({
+          exitCode: 0,
+          stdout: "## Loop 1\nDid stuff",
+          stderr: "",
+        });
       }
       if (execCallCount === 4) {
-        return Promise.resolve({ exitCode: 0, stdout: "abc1234 feat: initial\n", stderr: "" });
+        return Promise.resolve({
+          exitCode: 0,
+          stdout: "abc1234 feat: initial\n",
+          stderr: "",
+        });
       }
       return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
     };
@@ -218,14 +229,21 @@ Deno.test("AgentRunner", async (t) => {
     // Use exec override since we need clean hasDirtyTree at the end
     let execCallCount = 0;
     runtime.exec = (container, command, options) => {
-      runtime.calls.push({ method: "exec", args: [container, command, options] });
+      runtime.calls.push({
+        method: "exec",
+        args: [container, command, options],
+      });
       execCallCount++;
       // Calls: 1=mkdir, 2=chown, 3=cat progress, 4=git log, 5=check, 6=hasDirtyTree
       if (execCallCount === 3 || execCallCount === 4) {
         return Promise.resolve({ exitCode: 1, stdout: "", stderr: "" });
       }
       if (execCallCount === 5) {
-        return Promise.resolve({ exitCode: 0, stdout: "All tests passed", stderr: "" });
+        return Promise.resolve({
+          exitCode: 0,
+          stdout: "All tests passed",
+          stderr: "",
+        });
       }
       return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
     };
@@ -310,7 +328,10 @@ Deno.test("AgentRunner", async (t) => {
 
     let execCallCount = 0;
     runtime.exec = (container, command, options) => {
-      runtime.calls.push({ method: "exec", args: [container, command, options] });
+      runtime.calls.push({
+        method: "exec",
+        args: [container, command, options],
+      });
       execCallCount++;
       return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
     };
@@ -329,78 +350,98 @@ Deno.test("AgentRunner", async (t) => {
     await session.dispose();
   });
 
-  await t.step("dirty tree triggers nudge, successful nudge returns autoCommitted=false", async () => {
-    const runtime = new MockRuntime();
-    const session = await createSession(runtime);
+  await t.step(
+    "dirty tree triggers nudge, successful nudge returns autoCommitted=false",
+    async () => {
+      const runtime = new MockRuntime();
+      const session = await createSession(runtime);
 
-    let statusCallCount = 0;
-    runtime.exec = (container, command, options) => {
-      runtime.calls.push({ method: "exec", args: [container, command, options] });
-      // git status --porcelain
-      if (
-        Array.isArray(command) &&
-        command[0] === "git" && command[1] === "status" &&
-        command.includes("--porcelain")
-      ) {
-        statusCallCount++;
-        // First: dirty, second: clean (nudge succeeded)
-        if (statusCallCount === 1) {
-          return Promise.resolve({ exitCode: 0, stdout: " M dirty.ts\n", stderr: "" });
+      let statusCallCount = 0;
+      runtime.exec = (container, command, options) => {
+        runtime.calls.push({
+          method: "exec",
+          args: [container, command, options],
+        });
+        // git status --porcelain
+        if (
+          Array.isArray(command) &&
+          command[0] === "git" && command[1] === "status" &&
+          command.includes("--porcelain")
+        ) {
+          statusCallCount++;
+          // First: dirty, second: clean (nudge succeeded)
+          if (statusCallCount === 1) {
+            return Promise.resolve({
+              exitCode: 0,
+              stdout: " M dirty.ts\n",
+              stderr: "",
+            });
+          }
+          return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
         }
         return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
-      }
-      return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
-    };
-    runtime.execStreamLines = [
-      { line: "KNOX_COMPLETE", stream: "stdout" },
-    ];
+      };
+      runtime.execStreamLines = [
+        { line: "KNOX_COMPLETE", stream: "stdout" },
+      ];
 
-    const runner = createRunner(session, { maxLoops: 1 });
-    const result = await runner.run();
+      const runner = createRunner(session, { maxLoops: 1 });
+      const result = await runner.run();
 
-    assertEquals(result.autoCommitted, false);
-    // 2 execStream calls: 1 loop + 1 nudge
-    const streamCalls = runtime.callsTo("execStream");
-    assertEquals(streamCalls.length, 2);
+      assertEquals(result.autoCommitted, false);
+      // 2 execStream calls: 1 loop + 1 nudge
+      const streamCalls = runtime.callsTo("execStream");
+      assertEquals(streamCalls.length, 2);
 
-    await session.dispose();
-  });
+      await session.dispose();
+    },
+  );
 
-  await t.step("failed nudge falls back to auto-commit, returns autoCommitted=true", async () => {
-    const runtime = new MockRuntime();
-    const session = await createSession(runtime);
+  await t.step(
+    "failed nudge falls back to auto-commit, returns autoCommitted=true",
+    async () => {
+      const runtime = new MockRuntime();
+      const session = await createSession(runtime);
 
-    // Always return dirty for git status
-    runtime.exec = (container, command, options) => {
-      runtime.calls.push({ method: "exec", args: [container, command, options] });
-      if (
-        Array.isArray(command) &&
-        command[0] === "git" && command[1] === "status" &&
-        command.includes("--porcelain")
-      ) {
-        return Promise.resolve({ exitCode: 0, stdout: " M dirty.ts\n", stderr: "" });
-      }
-      return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
-    };
-    runtime.execStreamLines = [
-      { line: "KNOX_COMPLETE", stream: "stdout" },
-    ];
+      // Always return dirty for git status
+      runtime.exec = (container, command, options) => {
+        runtime.calls.push({
+          method: "exec",
+          args: [container, command, options],
+        });
+        if (
+          Array.isArray(command) &&
+          command[0] === "git" && command[1] === "status" &&
+          command.includes("--porcelain")
+        ) {
+          return Promise.resolve({
+            exitCode: 0,
+            stdout: " M dirty.ts\n",
+            stderr: "",
+          });
+        }
+        return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+      };
+      runtime.execStreamLines = [
+        { line: "KNOX_COMPLETE", stream: "stdout" },
+      ];
 
-    const runner = createRunner(session, { maxLoops: 1 });
-    const result = await runner.run();
+      const runner = createRunner(session, { maxLoops: 1 });
+      const result = await runner.run();
 
-    assertEquals(result.autoCommitted, true);
+      assertEquals(result.autoCommitted, true);
 
-    // Should see the auto-commit exec call
-    const execCalls = runtime.callsTo("exec");
-    const autoCommitCall = execCalls.find((c) => {
-      const cmd = c.args[1] as string[];
-      return cmd.some((a) =>
-        typeof a === "string" && a.includes("auto-commit")
-      );
-    });
-    assert(autoCommitCall !== undefined, "auto-commit exec should exist");
+      // Should see the auto-commit exec call
+      const execCalls = runtime.callsTo("exec");
+      const autoCommitCall = execCalls.find((c) => {
+        const cmd = c.args[1] as string[];
+        return cmd.some((a) =>
+          typeof a === "string" && a.includes("auto-commit")
+        );
+      });
+      assert(autoCommitCall !== undefined, "auto-commit exec should exist");
 
-    await session.dispose();
-  });
+      await session.dispose();
+    },
+  );
 });

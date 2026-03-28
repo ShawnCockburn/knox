@@ -50,7 +50,12 @@ function happyRunner(
 
     // Preflight
     if (cmd === "gh auth status") {
-      return { success: true, stdout: "Logged in to github.com", stderr: "", code: 0 };
+      return {
+        success: true,
+        stdout: "Logged in to github.com",
+        stderr: "",
+        code: 0,
+      };
     }
 
     // Default branch detection
@@ -104,7 +109,12 @@ function happyRunner(
       };
     }
 
-    return { success: false, stdout: "", stderr: `Unexpected: ${cmd}`, code: 1 };
+    return {
+      success: false,
+      stdout: "",
+      stderr: `Unexpected: ${cmd}`,
+      code: 1,
+    };
   });
 }
 
@@ -468,7 +478,10 @@ Deno.test("PullRequestQueueOutput — existing PR for a branch is handled gracef
       },
     ],
   ]);
-  const { runner } = happyRunner(new Map([["knox/a", "exists"]]), existingPrResponses);
+  const { runner } = happyRunner(
+    new Map([["knox/a", "exists"]]),
+    existingPrResponses,
+  );
   const output = new PullRequestQueueOutput({ repoDir: "/repo" }, runner);
 
   // Should not throw

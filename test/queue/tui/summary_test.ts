@@ -21,7 +21,10 @@ Deno.test("Summary format: QueueTUI", async (t) => {
     const summary = tui.formatSummary();
     assert(summary.startsWith("Completed:"), summary);
     assert(summary.includes("3 completed"), summary);
-    assert(summary.match(/\(\d+s\)$/), `expected elapsed time, got: ${summary}`);
+    assert(
+      summary.match(/\(\d+s\)$/),
+      `expected elapsed time, got: ${summary}`,
+    );
   });
 
   await t.step("Failed: some items failed", () => {
@@ -77,7 +80,10 @@ Deno.test("Summary format: StaticRenderer", async (t) => {
     const summary = renderer.formatSummary();
     assert(summary.startsWith("Completed:"), summary);
     assert(summary.includes("2 completed"), summary);
-    assert(summary.match(/\(\d+s\)$/), `expected elapsed time, got: ${summary}`);
+    assert(
+      summary.match(/\(\d+s\)$/),
+      `expected elapsed time, got: ${summary}`,
+    );
   });
 
   await t.step("Failed: some items failed", () => {

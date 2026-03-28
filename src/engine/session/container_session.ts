@@ -1,4 +1,8 @@
-import type { ContainerRuntime, ExecOptions, OnLineCallback } from "../../shared/runtime/container_runtime.ts";
+import type {
+  ContainerRuntime,
+  ExecOptions,
+  OnLineCallback,
+} from "../../shared/runtime/container_runtime.ts";
 import type { ContainerId, ExecResult, ImageId } from "../../shared/types.ts";
 import type { SourceProvider } from "../source/source_provider.ts";
 import type { SourceMetadata } from "../source/source_provider.ts";
@@ -59,7 +63,9 @@ export class ContainerSession {
    * Create a sandboxed container with source copied in, network restricted,
    * and git verified. This is the only way to obtain a ContainerSession.
    */
-  static async create(options: ContainerSessionOptions): Promise<ContainerSession> {
+  static async create(
+    options: ContainerSessionOptions,
+  ): Promise<ContainerSession> {
     const {
       runtime,
       runId,

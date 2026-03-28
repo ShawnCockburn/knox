@@ -72,7 +72,9 @@ export interface MultiQueueRunnerOptions {
   signal?: AbortSignal;
   verbose?: boolean;
   resume?: boolean;
-  queueOutput?: { deliver(name: string, report: QueueReport): Promise<void> | void };
+  queueOutput?: {
+    deliver(name: string, report: QueueReport): Promise<void> | void;
+  };
   onQueueStart?: (name: string) => void;
   onQueueComplete?: (name: string, report: QueueReport) => void;
   /** Internal: override orchestrator construction for testing. */
@@ -143,4 +145,3 @@ export function multiQueueExitCode(report: MultiQueueReport): number {
   }
   return 0;
 }
-

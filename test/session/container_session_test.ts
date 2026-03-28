@@ -177,79 +177,101 @@ Deno.test("ContainerSession", async (t) => {
     },
   );
 
-  await t.step("hasDirtyTree() returns true when workspace is dirty", async () => {
-    const runtime = new MockRuntime();
-    runtime.execResults = [
-      { exitCode: 0, stdout: "", stderr: "" }, // chown
-      { exitCode: 0, stdout: ".git", stderr: "" }, // git rev-parse
-      { exitCode: 0, stdout: "", stderr: "" }, // exclude printf
-    ];
-    const session = await ContainerSession.create(createOptions(runtime));
+  await t.step(
+    "hasDirtyTree() returns true when workspace is dirty",
+    async () => {
+      const runtime = new MockRuntime();
+      runtime.execResults = [
+        { exitCode: 0, stdout: "", stderr: "" }, // chown
+        { exitCode: 0, stdout: ".git", stderr: "" }, // git rev-parse
+        { exitCode: 0, stdout: "", stderr: "" }, // exclude printf
+      ];
+      const session = await ContainerSession.create(createOptions(runtime));
 
-    // Override exec to return dirty status
-    runtime.exec = (container, command, options) => {
-      runtime.calls.push({ method: "exec", args: [container, command, options] });
-      return Promise.resolve({ exitCode: 0, stdout: " M dirty.ts\n", stderr: "" });
-    };
-    const dirty = await session.hasDirtyTree();
-    assertEquals(dirty, true);
+      // Override exec to return dirty status
+      runtime.exec = (container, command, options) => {
+        runtime.calls.push({
+          method: "exec",
+          args: [container, command, options],
+        });
+        return Promise.resolve({
+          exitCode: 0,
+          stdout: " M dirty.ts\n",
+          stderr: "",
+        });
+      };
+      const dirty = await session.hasDirtyTree();
+      assertEquals(dirty, true);
 
-    await session.dispose();
-  });
+      await session.dispose();
+    },
+  );
 
-  await t.step("hasDirtyTree() returns false when workspace is clean", async () => {
-    const runtime = new MockRuntime();
-    runtime.execResults = [
-      { exitCode: 0, stdout: "", stderr: "" },
-      { exitCode: 0, stdout: ".git", stderr: "" },
-      { exitCode: 0, stdout: "", stderr: "" },
-    ];
-    const session = await ContainerSession.create(createOptions(runtime));
+  await t.step(
+    "hasDirtyTree() returns false when workspace is clean",
+    async () => {
+      const runtime = new MockRuntime();
+      runtime.execResults = [
+        { exitCode: 0, stdout: "", stderr: "" },
+        { exitCode: 0, stdout: ".git", stderr: "" },
+        { exitCode: 0, stdout: "", stderr: "" },
+      ];
+      const session = await ContainerSession.create(createOptions(runtime));
 
-    runtime.exec = (container, command, options) => {
-      runtime.calls.push({ method: "exec", args: [container, command, options] });
-      return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
-    };
-    const dirty = await session.hasDirtyTree();
-    assertEquals(dirty, false);
+      runtime.exec = (container, command, options) => {
+        runtime.calls.push({
+          method: "exec",
+          args: [container, command, options],
+        });
+        return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+      };
+      const dirty = await session.hasDirtyTree();
+      assertEquals(dirty, false);
 
-    await session.dispose();
-  });
+      await session.dispose();
+    },
+  );
 
-  await t.step("extractBundle() creates bundle and copies to host", async () => {
-    const runtime = new MockRuntime();
-    runtime.execResults = [
-      { exitCode: 0, stdout: "", stderr: "" },
-      { exitCode: 0, stdout: ".git", stderr: "" },
-      { exitCode: 0, stdout: "", stderr: "" },
-    ];
-    const session = await ContainerSession.create(createOptions(runtime));
-    runtime.calls = [];
+  await t.step(
+    "extractBundle() creates bundle and copies to host",
+    async () => {
+      const runtime = new MockRuntime();
+      runtime.execResults = [
+        { exitCode: 0, stdout: "", stderr: "" },
+        { exitCode: 0, stdout: ".git", stderr: "" },
+        { exitCode: 0, stdout: "", stderr: "" },
+      ];
+      const session = await ContainerSession.create(createOptions(runtime));
+      runtime.calls = [];
 
-    runtime.exec = (container, command, options) => {
-      runtime.calls.push({ method: "exec", args: [container, command, options] });
-      return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
-    };
-    const bundlePath = await session.extractBundle();
+      runtime.exec = (container, command, options) => {
+        runtime.calls.push({
+          method: "exec",
+          args: [container, command, options],
+        });
+        return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+      };
+      const bundlePath = await session.extractBundle();
 
-    assertEquals(bundlePath, "/tmp/knox-test1234/bundle.git");
+      assertEquals(bundlePath, "/tmp/knox-test1234/bundle.git");
 
-    // Verify exec was called with git bundle create
-    const execCalls = runtime.callsTo("exec");
-    assertEquals(execCalls.length, 1);
-    const cmd = execCalls[0].args[1] as string[];
-    assertEquals(cmd[0], "git");
-    assertEquals(cmd[1], "bundle");
-    assertEquals(cmd[2], "create");
+      // Verify exec was called with git bundle create
+      const execCalls = runtime.callsTo("exec");
+      assertEquals(execCalls.length, 1);
+      const cmd = execCalls[0].args[1] as string[];
+      assertEquals(cmd[0], "git");
+      assertEquals(cmd[1], "bundle");
+      assertEquals(cmd[2], "create");
 
-    // Verify copyOut was called
-    const copyCalls = runtime.callsTo("copyOut");
-    assertEquals(copyCalls.length, 1);
-    assertEquals(copyCalls[0].args[1], "/tmp/knox.bundle");
-    assertEquals(copyCalls[0].args[2], "/tmp/knox-test1234/bundle.git");
+      // Verify copyOut was called
+      const copyCalls = runtime.callsTo("copyOut");
+      assertEquals(copyCalls.length, 1);
+      assertEquals(copyCalls[0].args[1], "/tmp/knox.bundle");
+      assertEquals(copyCalls[0].args[2], "/tmp/knox-test1234/bundle.git");
 
-    await session.dispose();
-  });
+      await session.dispose();
+    },
+  );
 
   await t.step("extractBundle() throws on git bundle failure", async () => {
     const runtime = new MockRuntime();
@@ -261,8 +283,15 @@ Deno.test("ContainerSession", async (t) => {
     const session = await ContainerSession.create(createOptions(runtime));
 
     runtime.exec = (container, command, options) => {
-      runtime.calls.push({ method: "exec", args: [container, command, options] });
-      return Promise.resolve({ exitCode: 1, stdout: "", stderr: "bundle error" });
+      runtime.calls.push({
+        method: "exec",
+        args: [container, command, options],
+      });
+      return Promise.resolve({
+        exitCode: 1,
+        stdout: "",
+        stderr: "bundle error",
+      });
     };
 
     await assertRejects(

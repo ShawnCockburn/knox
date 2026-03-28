@@ -244,7 +244,8 @@ Deno.test("GitHubIssueQueueSource — auto-creates knox labels", async () => {
 
     // Check that label create was called for all knox labels
     const labelCalls = calls.filter(
-      (c) => c.args[0] === "gh" && c.args[1] === "label" && c.args[2] === "create",
+      (c) =>
+        c.args[0] === "gh" && c.args[1] === "label" && c.args[2] === "create",
     );
     assertEquals(labelCalls.length, 4); // knox/claimed, knox/running, knox/failed, knox/blocked
   });
@@ -315,7 +316,10 @@ Deno.test("GitHubIssueQueueSource — update with completed status closes issue"
         return { success: true, stdout: "", stderr: "", code: 0 };
       }
       // Issue edit (label removal)
-      if (args[0] === "gh" && args[1] === "issue" && args[2] === "edit" && args.includes("--remove-label")) {
+      if (
+        args[0] === "gh" && args[1] === "issue" && args[2] === "edit" &&
+        args.includes("--remove-label")
+      ) {
         const labelIdx = args.indexOf("--remove-label");
         removedLabels.push({
           issue: parseInt(args[3]),

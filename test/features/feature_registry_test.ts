@@ -1,7 +1,5 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import {
-  FeatureRegistry,
-} from "../../src/shared/features/feature_registry.ts";
+import { FeatureRegistry } from "../../src/shared/features/feature_registry.ts";
 import { join } from "@std/path";
 
 // Use the real features/ directory at repo root
@@ -53,7 +51,10 @@ Deno.test("FeatureRegistry", async (t) => {
     const registry = new FeatureRegistry(FEATURES_DIR);
     await registry.load();
 
-    const result = await registry.resolve([{ name: "python", version: "3.11" }]);
+    const result = await registry.resolve([{
+      name: "python",
+      version: "3.11",
+    }]);
     assertEquals(result.ok, true);
     if (result.ok) {
       assertEquals(result.features[0].version, "3.11");

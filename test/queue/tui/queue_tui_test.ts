@@ -9,7 +9,10 @@ import {
   SPINNER_FRAMES,
   STATUS_ICONS,
 } from "../../../src/queue/tui/state.ts";
-import type { DisplayStatus, ItemDisplayState } from "../../../src/queue/tui/state.ts";
+import type {
+  DisplayStatus,
+  ItemDisplayState,
+} from "../../../src/queue/tui/state.ts";
 import type { KnoxEvent } from "../../../src/shared/types.ts";
 
 Deno.test("State machine: all event sequences", async (t) => {

@@ -167,7 +167,9 @@ export class Knox {
         emit({ type: "container:created", containerId: session.containerId });
 
         // Register abort listener to kill container immediately
-        onAbort = () => { session!.dispose(); };
+        onAbort = () => {
+          session!.dispose();
+        };
         signal?.addEventListener("abort", onAbort);
       } catch (e) {
         if (signal?.aborted) return makeAbortResult();

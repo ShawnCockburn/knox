@@ -79,69 +79,78 @@ Deno.test("CLI", async (t) => {
     assertStringIncludes(stderr, "--max-loops must be a positive integer");
   });
 
-  await t.step("knox run exits with code 2 for invalid --max-loops", async () => {
-    const cmd = new Deno.Command("deno", {
-      args: [
-        "run",
-        "--allow-read",
-        "--allow-env",
-        CLI_PATH,
-        "run",
-        "--task",
-        "test",
-        "--max-loops",
-        "abc",
-      ],
-      stdout: "piped",
-      stderr: "piped",
-    });
-    const result = await cmd.output();
-    assertEquals(result.code, 2);
-    const stderr = new TextDecoder().decode(result.stderr);
-    assertStringIncludes(stderr, "--max-loops must be a positive integer");
-  });
+  await t.step(
+    "knox run exits with code 2 for invalid --max-loops",
+    async () => {
+      const cmd = new Deno.Command("deno", {
+        args: [
+          "run",
+          "--allow-read",
+          "--allow-env",
+          CLI_PATH,
+          "run",
+          "--task",
+          "test",
+          "--max-loops",
+          "abc",
+        ],
+        stdout: "piped",
+        stderr: "piped",
+      });
+      const result = await cmd.output();
+      assertEquals(result.code, 2);
+      const stderr = new TextDecoder().decode(result.stderr);
+      assertStringIncludes(stderr, "--max-loops must be a positive integer");
+    },
+  );
 
   // ── queue --file mode ────────────────────────────────────────────────────
 
-  await t.step("knox queue without --source shows migration error", async () => {
-    const cmd = new Deno.Command("deno", {
-      args: [
-        "run",
-        "--allow-read",
-        "--allow-env",
-        CLI_PATH,
-        "queue",
-      ],
-      stdout: "piped",
-      stderr: "piped",
-    });
-    const result = await cmd.output();
-    assertEquals(result.code, 2);
-    const stderr = new TextDecoder().decode(result.stderr);
-    assertStringIncludes(stderr, "--source is required");
-  });
+  await t.step(
+    "knox queue without --source shows migration error",
+    async () => {
+      const cmd = new Deno.Command("deno", {
+        args: [
+          "run",
+          "--allow-read",
+          "--allow-env",
+          CLI_PATH,
+          "queue",
+        ],
+        stdout: "piped",
+        stderr: "piped",
+      });
+      const result = await cmd.output();
+      assertEquals(result.code, 2);
+      const stderr = new TextDecoder().decode(result.stderr);
+      assertStringIncludes(stderr, "--source is required");
+    },
+  );
 
-  await t.step("knox queue --file with nonexistent file shows error", async () => {
-    const cmd = new Deno.Command("deno", {
-      args: [
-        "run",
-        "--allow-read",
-        "--allow-env",
-        CLI_PATH,
-        "queue",
-        "--source",
-        "directory",
-        "--file",
-        "/tmp/nonexistent-knox-queue.json",
-      ],
-      stdout: "piped",
-      stderr: "piped",
-    });
-    const result = await cmd.output();
-    assertEquals(result.code, 2);
-    const stderr = new TextDecoder().decode(result.stderr);
-    assertStringIncludes(stderr, "queue file not found");
-  });
+  await t.step(
+    "knox queue --file with nonexistent file shows error",
+    async () => {
+      const cmd = new Deno.Command("deno", {
+        args: [
+          "run",
+          "--allow-read",
+          "--allow-env",
+          CLI_PATH,
+          "queue",
+          "--source",
+          "directory",
+          "--file",
+          "/tmp/nonexistent-knox-queue.json",
+        ],
+        stdout: "piped",
+        stderr: "piped",
+      });
+      const result = await cmd.output();
+      assertEquals(result.code, 2);
+      const stderr = new TextDecoder().decode(result.stderr);
+      assertStringIncludes(stderr, "queue file not found");
+    },
+  );
 
   // ── queue discovery mode ─────────────────────────────────────────────────
 

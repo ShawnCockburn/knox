@@ -53,7 +53,9 @@ export class DirectoryQueueSource implements QueueSource {
     if (mdFiles.length === 0) {
       return {
         ok: false,
-        errors: [{ message: `No .md files found in directory: ${this.dirPath}` }],
+        errors: [{
+          message: `No .md files found in directory: ${this.dirPath}`,
+        }],
       };
     }
 

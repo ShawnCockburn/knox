@@ -86,7 +86,9 @@ export class FeatureRegistry {
     const entries = Object.entries(value);
     if (entries.length !== 1) {
       throw new Error(
-        `Feature object must have exactly one key, got: ${JSON.stringify(value)}`,
+        `Feature object must have exactly one key, got: ${
+          JSON.stringify(value)
+        }`,
       );
     }
     const [name, version] = entries[0];

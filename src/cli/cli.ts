@@ -6,9 +6,7 @@ import { formatSummary } from "./format.ts";
 import { log } from "../shared/log.ts";
 import { PreflightChecker } from "../shared/preflight/preflight_checker.ts";
 import { ImageManager } from "../shared/image/image_manager.ts";
-import {
-  FeatureRegistry,
-} from "../shared/features/feature_registry.ts";
+import { FeatureRegistry } from "../shared/features/feature_registry.ts";
 import { DockerRuntime } from "../shared/runtime/docker_runtime.ts";
 import { resolveAuth } from "../shared/knox/resolve_auth.ts";
 import { resolveAllowedIPs } from "../shared/knox/resolve_network.ts";
@@ -242,7 +240,10 @@ if (effectiveCommand === "init") {
 
         log.info("Resolving shared resources...");
         const imageManager = new ImageManager(runtime);
-        const image = await resolveDefaultsImage(manifest.defaults, imageManager);
+        const image = await resolveDefaultsImage(
+          manifest.defaults,
+          imageManager,
+        );
         const resolvedEnvVars = await resolveAuth([]);
         const allowedIPs = await resolveAllowedIPs();
 
@@ -290,7 +291,8 @@ if (effectiveCommand === "init") {
           onItemRunning: (itemId) => renderer.markItemRunning(itemId),
           onItemCompleted: (itemId, branch) =>
             renderer.markItemCompleted(itemId, branch),
-          onItemFailed: (itemId, error) => renderer.markItemFailed(itemId, error),
+          onItemFailed: (itemId, error) =>
+            renderer.markItemFailed(itemId, error),
           onItemBlocked: (itemId, blockedBy) =>
             renderer.markItemBlocked(itemId, blockedBy),
         });
@@ -306,7 +308,9 @@ if (effectiveCommand === "init") {
 
         console.log(JSON.stringify(report, null, 2));
 
-        const allCompleted = report.items.every((i) => i.status === "completed");
+        const allCompleted = report.items.every((i) =>
+          i.status === "completed"
+        );
         Deno.exit(allCompleted ? 0 : 1);
       } catch (e) {
         if (e instanceof OrchestratorValidationError) {
@@ -321,7 +325,12 @@ if (effectiveCommand === "init") {
       }
     } else if (flags.name) {
       // ── Named queue mode ──────────────────────────────────────────────────
-      const queueDir = resolve(projectDir, ".knox", "queues", flags.name as string);
+      const queueDir = resolve(
+        projectDir,
+        ".knox",
+        "queues",
+        flags.name as string,
+      );
       try {
         await Deno.stat(queueDir);
       } catch {
@@ -346,7 +355,10 @@ if (effectiveCommand === "init") {
 
         log.info("Resolving shared resources...");
         const imageManager = new ImageManager(runtime);
-        const image = await resolveDefaultsImage(manifest.defaults, imageManager);
+        const image = await resolveDefaultsImage(
+          manifest.defaults,
+          imageManager,
+        );
         const resolvedEnvVars = await resolveAuth([]);
         const allowedIPs = await resolveAllowedIPs();
 
@@ -391,7 +403,8 @@ if (effectiveCommand === "init") {
           onItemRunning: (itemId) => renderer.markItemRunning(itemId),
           onItemCompleted: (itemId, branch) =>
             renderer.markItemCompleted(itemId, branch),
-          onItemFailed: (itemId, error) => renderer.markItemFailed(itemId, error),
+          onItemFailed: (itemId, error) =>
+            renderer.markItemFailed(itemId, error),
           onItemBlocked: (itemId, blockedBy) =>
             renderer.markItemBlocked(itemId, blockedBy),
         });
@@ -404,7 +417,9 @@ if (effectiveCommand === "init") {
         await queueOutput.onQueueComplete(report);
         console.log(JSON.stringify(report, null, 2));
 
-        const allCompleted = report.items.every((i) => i.status === "completed");
+        const allCompleted = report.items.every((i) =>
+          i.status === "completed"
+        );
         Deno.exit(allCompleted ? 0 : 1);
       } catch (e) {
         if (e instanceof OrchestratorValidationError) {
@@ -828,8 +843,9 @@ if (effectiveCommand === "init") {
         "Versions".length,
       );
 
-      const header =
-        `${"Feature".padEnd(nameWidth)}  ${"Default".padEnd(defaultWidth)}  ${"Versions".padEnd(versionsWidth)}  Description`;
+      const header = `${"Feature".padEnd(nameWidth)}  ${
+        "Default".padEnd(defaultWidth)
+      }  ${"Versions".padEnd(versionsWidth)}  Description`;
       console.log(header);
       console.log("─".repeat(header.length));
 

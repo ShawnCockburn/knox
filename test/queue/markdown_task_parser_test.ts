@@ -56,29 +56,35 @@ Do the thing.
     }
   });
 
-  await t.step("valid task with minimal frontmatter (just body, no frontmatter)", () => {
-    const content = "Just do this thing.";
-    const result = parseMarkdownTask(content, "simple-task.md");
-    assertEquals(result?.ok, true);
-    if (result?.ok) {
-      assertEquals(result.item.id, "simple-task");
-      assertEquals(result.item.task, "Just do this thing.");
-      assertEquals(result.item.model, undefined);
-      assertEquals(result.item.dependsOn, undefined);
-    }
-  });
+  await t.step(
+    "valid task with minimal frontmatter (just body, no frontmatter)",
+    () => {
+      const content = "Just do this thing.";
+      const result = parseMarkdownTask(content, "simple-task.md");
+      assertEquals(result?.ok, true);
+      if (result?.ok) {
+        assertEquals(result.item.id, "simple-task");
+        assertEquals(result.item.task, "Just do this thing.");
+        assertEquals(result.item.model, undefined);
+        assertEquals(result.item.dependsOn, undefined);
+      }
+    },
+  );
 
-  await t.step("missing body (empty content after frontmatter) returns error", () => {
-    const content = `---
+  await t.step(
+    "missing body (empty content after frontmatter) returns error",
+    () => {
+      const content = `---
 model: claude-opus-4-6
 ---
 `;
-    const result = parseMarkdownTask(content, "empty-body.md");
-    assertEquals(result?.ok, false);
-    if (!result?.ok) {
-      assertEquals(result.errors.some((e) => e.field === "task"), true);
-    }
-  });
+      const result = parseMarkdownTask(content, "empty-body.md");
+      assertEquals(result?.ok, false);
+      if (!result?.ok) {
+        assertEquals(result.errors.some((e) => e.field === "task"), true);
+      }
+    },
+  );
 
   await t.step("malformed frontmatter returns error", () => {
     const content = `---
@@ -105,8 +111,14 @@ Do the thing.
     const result = parseMarkdownTask(content, "unknown-field.md");
     assertEquals(result?.ok, true);
     if (result?.ok) {
-      assertEquals(result.warnings?.some((w) => w.field === "unknownField"), true);
-      assertEquals(result.warnings?.some((w) => w.field === "anotherUnknown"), true);
+      assertEquals(
+        result.warnings?.some((w) => w.field === "unknownField"),
+        true,
+      );
+      assertEquals(
+        result.warnings?.some((w) => w.field === "anotherUnknown"),
+        true,
+      );
     }
   });
 

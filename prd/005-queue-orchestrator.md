@@ -2,29 +2,30 @@
 
 ## Problem Statement
 
-Knox today is a single-run tool: one task, one container, one branch. A developer
-who wants to execute a plan — a PRD broken into 8 tasks with dependencies between
-them — must manually invoke Knox 8 times, sequencing dependent tasks, tracking
-which succeeded, and managing the resulting branches. This is exactly the kind of
-repetitive coordination work that should be automated.
+Knox today is a single-run tool: one task, one container, one branch. A
+developer who wants to execute a plan — a PRD broken into 8 tasks with
+dependencies between them — must manually invoke Knox 8 times, sequencing
+dependent tasks, tracking which succeeded, and managing the resulting branches.
+This is exactly the kind of repetitive coordination work that should be
+automated.
 
 The vision: a developer writes a PRD, breaks it into a queue of tasks with
-dependencies, hands it to an orchestrator, and walks away. The orchestrator works
-through the queue — respecting dependency order, running independent tasks in
-parallel, chaining dependent tasks so each builds on its predecessor's output —
-and produces neatly packaged branches with stacked commits.
+dependencies, hands it to an orchestrator, and walks away. The orchestrator
+works through the queue — respecting dependency order, running independent tasks
+in parallel, chaining dependent tasks so each builds on its predecessor's output
+— and produces neatly packaged branches with stacked commits.
 
 This requires two things:
 
-1. **Knox must become a dumber, more composable engine.** Today Knox resolves its
-   own auth, builds its own images, runs its own preflight — convenient for CLI
-   users, wasteful when an orchestrator runs 5 instances against the same repo.
-   Pre-container logic must move out of the engine so callers can do it once and
-   inject the results.
+1. **Knox must become a dumber, more composable engine.** Today Knox resolves
+   its own auth, builds its own images, runs its own preflight — convenient for
+   CLI users, wasteful when an orchestrator runs 5 instances against the same
+   repo. Pre-container logic must move out of the engine so callers can do it
+   once and inject the results.
 
-2. **A new orchestrator module must exist.** It owns scheduling (DAG resolution),
-   concurrency, failure handling, state tracking, and result packaging — concerns
-   that don't belong in the engine.
+2. **A new orchestrator module must exist.** It owns scheduling (DAG
+   resolution), concurrency, failure handling, state tracking, and result
+   packaging — concerns that don't belong in the engine.
 
 ## Architecture: Module Boundaries
 
@@ -44,6 +45,7 @@ src/
 ```
 
 **Import rules:**
+
 - `engine/` never imports from `cli/` or `orchestrator/`
 - `cli/` imports from `engine/` and `shared/`
 - `orchestrator/` imports from `engine/` and `shared/`
@@ -62,12 +64,12 @@ assign IDs for correlation with queue items.
 
 ```typescript
 interface KnoxEngineOptions {
-  runId?: RunId;          // optional, defaults to generateRunId()
+  runId?: RunId; // optional, defaults to generateRunId()
   // ... existing options
 }
 
 interface KnoxResult {
-  runId: RunId;           // always present
+  runId: RunId; // always present
   // ... existing fields
 }
 ```
@@ -85,7 +87,7 @@ interface KnoxEngineOptions {
 }
 
 interface KnoxResult {
-  aborted: boolean;       // true if cancelled via signal
+  aborted: boolean; // true if cancelled via signal
   // ...
 }
 ```
@@ -123,12 +125,12 @@ lifecycle channel the orchestrator cares about.
 
 Pre-container logic moves out of the engine into `shared/`:
 
-| Concern | Currently in | Moves to |
-|---------|-------------|----------|
-| `resolveAuth()` | `Knox.run()` | `shared/` (already extracted as function) |
-| `resolveAllowedIPs()` | `Knox.run()` | `shared/` (already extracted as function) |
-| `ImageManager.ensureSetupImage()` | `Knox.run()` | `shared/` |
-| `PreflightChecker.check()` | `Knox.run()` | `shared/` |
+| Concern                           | Currently in | Moves to                                  |
+| --------------------------------- | ------------ | ----------------------------------------- |
+| `resolveAuth()`                   | `Knox.run()` | `shared/` (already extracted as function) |
+| `resolveAllowedIPs()`             | `Knox.run()` | `shared/` (already extracted as function) |
+| `ImageManager.ensureSetupImage()` | `Knox.run()` | `shared/`                                 |
+| `PreflightChecker.check()`        | `Knox.run()` | `shared/`                                 |
 
 The engine's constructor requires everything it needs upfront:
 
@@ -137,9 +139,9 @@ interface KnoxEngineOptions {
   task: string;
   dir: string;
   runId?: RunId;
-  image: ImageId;            // required — caller provides
-  envVars: string[];         // required — caller provides (already resolved)
-  allowedIPs: string[];      // required — caller provides
+  image: ImageId; // required — caller provides
+  envVars: string[]; // required — caller provides (already resolved)
+  allowedIPs: string[]; // required — caller provides
   maxLoops?: number;
   model?: string;
   check?: string;
@@ -180,7 +182,12 @@ failures.
 ```typescript
 type KnoxOutcome =
   | { ok: true; result: KnoxResult }
-  | { ok: false; error: string; phase: FailurePhase; partial?: Partial<KnoxResult> };
+  | {
+    ok: false;
+    error: string;
+    phase: FailurePhase;
+    partial?: Partial<KnoxResult>;
+  };
 
 type FailurePhase = "container" | "agent" | "bundle" | "sink";
 ```
@@ -191,6 +198,7 @@ type FailurePhase = "container" | "agent" | "bundle" | "sink";
 - `sink` — result collection failed (agent work exists but wasn't collected)
 
 The `phase` field informs retry decisions at the orchestrator level:
+
 - `container` failure with the same inputs = don't retry
 - `agent` failure = maybe retry
 - `sink` failure = agent work exists, retry collection only
@@ -208,7 +216,7 @@ of HEAD. This enables chained execution where dependent tasks start from their
 parent's result branch.
 
 ```typescript
-new GitSourceProvider(dir, { ref: "knox/auth-epic-f3a8b1c2" })
+new GitSourceProvider(dir, { ref: "knox/auth-epic-f3a8b1c2" });
 ```
 
 Default behavior (no ref) is unchanged — shallow clone of HEAD.
@@ -217,17 +225,26 @@ Default behavior (no ref) is unchanged — shallow clone of HEAD.
 
 ### 2.1 Queue Source Interface
 
-The orchestrator consumes work from a `QueueSource` — an interface with injectable
-implementations. The queue source is a dumb data layer; the orchestrator owns all
-scheduling logic.
+The orchestrator consumes work from a `QueueSource` — an interface with
+injectable implementations. The queue source is a dumb data layer; the
+orchestrator owns all scheduling logic.
 
 ```typescript
 interface QueueSource {
   load(): Promise<QueueManifest>;
-  update(itemId: string, status: ItemStatus, outcome?: KnoxOutcome): Promise<void>;
+  update(
+    itemId: string,
+    status: ItemStatus,
+    outcome?: KnoxOutcome,
+  ): Promise<void>;
 }
 
-type ItemStatus = "pending" | "in_progress" | "completed" | "failed" | "blocked";
+type ItemStatus =
+  | "pending"
+  | "in_progress"
+  | "completed"
+  | "failed"
+  | "blocked";
 
 interface QueueManifest {
   defaults: Partial<QueueDefaults>;
@@ -241,7 +258,7 @@ interface QueueDefaults {
   model: string;
   check: string;
   maxLoops: number;
-  prompt: string;      // inline prompt or path
+  prompt: string; // inline prompt or path
 }
 
 interface QueueItem {
@@ -316,17 +333,20 @@ All validation happens at load time, before any containers launch. Errors are
 collected and reported together.
 
 **Structural validation:**
+
 - Required fields present (`id`, `task` per item)
 - Types correct (concurrency is a positive integer, etc.)
 - No duplicate item IDs
 
 **Graph validation:**
+
 - All `dependsOn` references point to existing item IDs
 - No dependency cycles (topological sort — if it fails, reject)
 - Groups form linear chains only (no diamonds — within a group, each item has at
   most one dependent in the same group)
 
 **Error reporting:**
+
 ```
 Error: Invalid queue manifest
   - Item "auth-tests" depends on "nonexistent" which does not exist
@@ -341,10 +361,12 @@ Items declare dependencies via `dependsOn: [id, ...]`. The orchestrator builds a
 directed acyclic graph and resolves execution order.
 
 An item is **ready** when:
+
 - Status is `pending`
 - All items in its `dependsOn` list have status `completed`
 
 The scheduling algorithm:
+
 1. Find all ready items
 2. Launch up to `concurrency` limit (filling empty slots)
 3. When an item completes or fails, re-evaluate ready items
@@ -363,24 +385,30 @@ different groups can parallelize freely.
 **Fail gracefully, no retries (MVP).**
 
 When an item fails:
+
 1. Mark it `failed` in the state file
 2. Mark all transitive dependents `blocked`
 3. Continue running independent items
 
 The orchestrator runs everything it can, then reports:
+
 - What completed
 - What failed (and why)
 - What was blocked (and by what)
 
 ### 2.7 Groups and Chained Execution
 
-Items with the same `group` value are related and produce a single result branch.
+Items with the same `group` value are related and produce a single result
+branch.
 
 **Constraints:**
+
 - Items within a group must form a linear chain (enforced at validation)
-- Each item in a chain starts from its predecessor's result branch (not from main)
+- Each item in a chain starts from its predecessor's result branch (not from
+  main)
 
 **Execution:**
+
 - The first item in a group chain uses `GitSourceProvider(dir)` — clones HEAD
 - Subsequent items use `GitSourceProvider(dir, { ref: groupBranch })` — clones
   the group's evolving branch
@@ -388,23 +416,24 @@ Items with the same `group` value are related and produce a single result branch
 
 **Branch naming:** `knox/<group>-<queueRunId>` with optional override.
 
-Items without a `group` fork from main independently and produce their own branch
-(`knox/<slug>-<runId>`).
+Items without a `group` fork from main independently and produce their own
+branch (`knox/<slug>-<runId>`).
 
 ### 2.8 Orchestrator Serializes Sink Collection
 
-Multiple Knox runs may complete concurrently. Git operations on the host repo are
-not concurrency-safe (`index.lock` conflicts). The orchestrator serializes all
-`ResultSink.collect()` calls through a single serial queue, regardless of engine
-concurrency.
+Multiple Knox runs may complete concurrently. Git operations on the host repo
+are not concurrency-safe (`index.lock` conflicts). The orchestrator serializes
+all `ResultSink.collect()` calls through a single serial queue, regardless of
+engine concurrency.
 
 The engine runs in parallel. Result collection is serial. This keeps the engine
 simple and avoids lock contention.
 
 ### 2.9 State Persistence
 
-**Separate state file.** The queue YAML is input (never mutated). The orchestrator
-writes a `.state.yaml` file alongside it, updated on every status transition.
+**Separate state file.** The queue YAML is input (never mutated). The
+orchestrator writes a `.state.yaml` file alongside it, updated on every status
+transition.
 
 ```
 queues/
@@ -468,12 +497,14 @@ items:
 
 - Without `--resume`: existing state file is overwritten. All items start fresh.
 - With `--resume`: orchestrator reads state file, skips `completed` items,
-  re-attempts `failed` items, re-evaluates `blocked` items, starts `pending` items.
+  re-attempts `failed` items, re-evaluates `blocked` items, starts `pending`
+  items.
 - Warning printed if state file exists and `--resume` is not passed.
 
 ### 2.11 Shared Resource Optimization
 
-The orchestrator resolves shared resources once before launching any engine runs:
+The orchestrator resolves shared resources once before launching any engine
+runs:
 
 ```typescript
 // Orchestrator setup (once)
@@ -520,14 +551,15 @@ orchestrator.
 ### 3.2 Queue output
 
 **Live output (stderr):**
+
 - Default: lifecycle events only (item started, item completed/failed, progress)
 - `--verbose`: interleaved agent output with item ID prefix
 
-**Per-item log files:**
-Agent output for each item is written to `<queue-name>.logs/<item-id>.log`
-regardless of verbosity level.
+**Per-item log files:** Agent output for each item is written to
+`<queue-name>.logs/<item-id>.log` regardless of verbosity level.
 
 **Final summary (stderr):**
+
 ```
 Queue completed: 4/5 items succeeded, 1 failed, 0 blocked
 
@@ -541,13 +573,15 @@ Branches created: 2
 State file: queues/auth-rewrite.state.yaml
 ```
 
-**Structured output (stdout):**
-Full JSON report with all outcomes, branch names, timing, and errors.
+**Structured output (stdout):** Full JSON report with all outcomes, branch
+names, timing, and errors.
 
 ## MVP Scope
 
 ### In scope
-- Knox engine changes (run ID, abort, events, result union, dumb engine, ref param)
+
+- Knox engine changes (run ID, abort, events, result union, dumb engine, ref
+  param)
 - Repo reorganization (`engine/`, `cli/`, `orchestrator/`, `shared/`)
 - `QueueSource` interface + `FileQueueSource` (YAML)
 - DAG scheduling with `dependsOn`
@@ -562,6 +596,7 @@ Full JSON report with all outcomes, branch names, timing, and errors.
 - Lifecycle-only default output, `--verbose` for agent output
 
 ### Out of scope (future)
+
 - PR creation (future `ResultSink` strategy)
 - Notifications / completion hooks
 - CI/CD integration
@@ -572,32 +607,37 @@ Full JSON report with all outcomes, branch names, timing, and errors.
 
 ## Ubiquitous Language Additions
 
-| Term | Meaning |
-|------|---------|
-| **Engine** | Knox core: container session + agent runner + source/sink. Single-task executor. Takes resolved inputs, returns `KnoxOutcome`. |
-| **Orchestrator** | Queue runner: schedules engine runs based on a DAG, manages concurrency, tracks state, packages results. |
-| **Queue Source** | Interface for loading queue items and persisting their status. MVP: `FileQueueSource`. |
-| **Queue Manifest** | The full queue definition: defaults, concurrency, and items. Loaded from a `QueueSource`. |
-| **Queue Item** | A single unit of work: task description + optional overrides, group, and dependencies. |
-| **Item Status** | One of: `pending`, `in_progress`, `completed`, `failed`, `blocked`. |
-| **Group** | Explicit label linking related items. Items in a group form a linear chain and produce a single branch. |
-| **Chained Execution** | Dependent tasks within a group start from their predecessor's result branch, not from main. |
-| **Group Branch** | `knox/<group>-<queueRunId>` — single branch with stacked commits from all items in a group. |
-| **Queue Run ID** | Unique identifier for an orchestrator invocation. Used in group branch names and state file. |
-| **State File** | `<queue-name>.state.yaml` — orchestrator output tracking item statuses, run IDs, branches, timing. Queue file is never mutated. |
-| **Ready** | An item is ready when its status is `pending` and all dependencies are `completed`. |
-| **Blocked** | An item whose dependency has `failed`. Transitively applied to all downstream dependents. |
-| **KnoxOutcome** | Discriminated result union from the engine: `{ ok: true, result }` or `{ ok: false, error, phase }`. |
-| **Failure Phase** | Where the engine failed: `container`, `agent`, `bundle`, or `sink`. Informs retry decisions. |
-| **Lifecycle Event** | Typed event emitted by the engine via `onEvent`: loop starts, check failures, completion, abort, etc. |
+| Term                  | Meaning                                                                                                                         |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **Engine**            | Knox core: container session + agent runner + source/sink. Single-task executor. Takes resolved inputs, returns `KnoxOutcome`.  |
+| **Orchestrator**      | Queue runner: schedules engine runs based on a DAG, manages concurrency, tracks state, packages results.                        |
+| **Queue Source**      | Interface for loading queue items and persisting their status. MVP: `FileQueueSource`.                                          |
+| **Queue Manifest**    | The full queue definition: defaults, concurrency, and items. Loaded from a `QueueSource`.                                       |
+| **Queue Item**        | A single unit of work: task description + optional overrides, group, and dependencies.                                          |
+| **Item Status**       | One of: `pending`, `in_progress`, `completed`, `failed`, `blocked`.                                                             |
+| **Group**             | Explicit label linking related items. Items in a group form a linear chain and produce a single branch.                         |
+| **Chained Execution** | Dependent tasks within a group start from their predecessor's result branch, not from main.                                     |
+| **Group Branch**      | `knox/<group>-<queueRunId>` — single branch with stacked commits from all items in a group.                                     |
+| **Queue Run ID**      | Unique identifier for an orchestrator invocation. Used in group branch names and state file.                                    |
+| **State File**        | `<queue-name>.state.yaml` — orchestrator output tracking item statuses, run IDs, branches, timing. Queue file is never mutated. |
+| **Ready**             | An item is ready when its status is `pending` and all dependencies are `completed`.                                             |
+| **Blocked**           | An item whose dependency has `failed`. Transitively applied to all downstream dependents.                                       |
+| **KnoxOutcome**       | Discriminated result union from the engine: `{ ok: true, result }` or `{ ok: false, error, phase }`.                            |
+| **Failure Phase**     | Where the engine failed: `container`, `agent`, `bundle`, or `sink`. Informs retry decisions.                                    |
+| **Lifecycle Event**   | Typed event emitted by the engine via `onEvent`: loop starts, check failures, completion, abort, etc.                           |
 
 ## Dependency Strategy
 
 **Category: In-process + Local-substitutable.**
 
-- The orchestrator depends on the engine via its public interface (`KnoxEngineOptions` → `KnoxOutcome`). No new boundary abstractions needed beyond the engine's existing injectable interfaces.
-- `QueueSource` is an interface. `FileQueueSource` is the MVP implementation. Tests use a mock or in-memory implementation.
-- Shared utilities (`resolveAuth`, `resolveAllowedIPs`, `ImageManager`, `PreflightChecker`) remain dependency-free — they use Deno APIs directly and are testable via env vars and mocks.
+- The orchestrator depends on the engine via its public interface
+  (`KnoxEngineOptions` → `KnoxOutcome`). No new boundary abstractions needed
+  beyond the engine's existing injectable interfaces.
+- `QueueSource` is an interface. `FileQueueSource` is the MVP implementation.
+  Tests use a mock or in-memory implementation.
+- Shared utilities (`resolveAuth`, `resolveAllowedIPs`, `ImageManager`,
+  `PreflightChecker`) remain dependency-free — they use Deno APIs directly and
+  are testable via env vars and mocks.
 
 ## Testing Strategy
 
@@ -629,5 +669,6 @@ Full JSON report with all outcomes, branch names, timing, and errors.
 
 ### Integration tests
 
-- End-to-end: queue file → orchestrator → engine (mock runtime) → state file + branches
+- End-to-end: queue file → orchestrator → engine (mock runtime) → state file +
+  branches
 - Chained execution: second item's source provider uses first item's branch ref

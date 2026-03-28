@@ -81,7 +81,9 @@ export function parseMarkdownTask(
     } catch (e) {
       errors.push({
         field: "frontmatter",
-        message: `Malformed YAML frontmatter: ${e instanceof Error ? e.message : String(e)}`,
+        message: `Malformed YAML frontmatter: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
       });
       return { ok: false, errors };
     }
@@ -92,7 +94,10 @@ export function parseMarkdownTask(
     if (key in REMOVED_FIELDS) {
       errors.push({ field: key, message: REMOVED_FIELDS[key] });
     } else if (!KNOWN_FIELDS.has(key)) {
-      warnings.push({ field: key, message: `Unknown frontmatter field: '${key}'` });
+      warnings.push({
+        field: key,
+        message: `Unknown frontmatter field: '${key}'`,
+      });
     }
   }
 

@@ -33,7 +33,11 @@ export type { QueueOutput, QueueOutputResult } from "./output/queue_output.ts";
 export { BranchQueueOutput } from "./output/branch_queue_output.ts";
 
 // Queue discovery and multi-queue runner
-export { discoverQueues, multiQueueExitCode, runMultiQueue } from "./queue_discovery.ts";
+export {
+  discoverQueues,
+  multiQueueExitCode,
+  runMultiQueue,
+} from "./queue_discovery.ts";
 export type {
   DiscoveredQueue,
   MultiQueueReport,

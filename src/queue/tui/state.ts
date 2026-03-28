@@ -69,7 +69,9 @@ export function applyEvent(
     case "loop:end":
       return {
         ...state,
-        phase: event.completed ? "agent complete" : `loop ${state.loop}/${state.maxLoops} done`,
+        phase: event.completed
+          ? "agent complete"
+          : `loop ${state.loop}/${state.maxLoops} done`,
       };
     case "check:failed":
       return {

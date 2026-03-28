@@ -25,7 +25,8 @@ function validateEnvironmentFields(
     errors.push({
       ...(itemId && { itemId }),
       field: "features",
-      message: `${context}: 'features' and 'image' cannot be used together. Use 'features' for Knox-managed runtimes, or 'image' for a custom Docker image.`,
+      message:
+        `${context}: 'features' and 'image' cannot be used together. Use 'features' for Knox-managed runtimes, or 'image' for a custom Docker image.`,
     });
   }
 }

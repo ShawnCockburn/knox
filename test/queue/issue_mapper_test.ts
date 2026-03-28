@@ -66,7 +66,8 @@ Deno.test("issueToItemId — format is gh-<number>-<slug>", () => {
 Deno.test("issueToItemId — long title is truncated", () => {
   const issue: GitHubIssue = {
     number: 1,
-    title: "This is a very long issue title that exceeds the fifty character limit for slugification",
+    title:
+      "This is a very long issue title that exceeds the fifty character limit for slugification",
     body: "body",
     author: { login: "user" },
     labels: [],
@@ -160,7 +161,10 @@ Deno.test("mapIssueToQueueItem — empty body returns error", () => {
   assertEquals(result.ok, false);
   if (!result.ok) {
     assertEquals(result.errors.length >= 1, true);
-    assertEquals(result.errors[0].message.includes("Task body must not be empty"), true);
+    assertEquals(
+      result.errors[0].message.includes("Task body must not be empty"),
+      true,
+    );
   }
 });
 

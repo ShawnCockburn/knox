@@ -1,9 +1,10 @@
 import { assert, assertEquals } from "@std/assert";
 import { BranchQueueOutput } from "../../src/queue/output/branch_queue_output.ts";
-import type { QueueOutput, QueueOutputResult } from "../../src/queue/output/queue_output.ts";
-import {
-  Orchestrator,
-} from "../../src/queue/orchestrator.ts";
+import type {
+  QueueOutput,
+  QueueOutputResult,
+} from "../../src/queue/output/queue_output.ts";
+import { Orchestrator } from "../../src/queue/orchestrator.ts";
 import type { QueueReport } from "../../src/queue/orchestrator.ts";
 import type { KnoxEngineOptions, KnoxOutcome } from "../../src/engine/knox.ts";
 import { SinkStrategy } from "../../src/engine/sink/result_sink.ts";
@@ -107,7 +108,9 @@ Deno.test("Orchestrator + queueOutput", async (t) => {
   await t.step("calls queueOutput.deliver() after run completes", async () => {
     const logDir = await setupLogDir();
     try {
-      const deliverCalls: Array<{ report: QueueReport; manifest: QueueManifest }> = [];
+      const deliverCalls: Array<
+        { report: QueueReport; manifest: QueueManifest }
+      > = [];
 
       const mockOutput: QueueOutput = {
         async deliver(
@@ -158,80 +161,91 @@ Deno.test("Orchestrator + queueOutput", async (t) => {
     }
   });
 
-  await t.step("works without queueOutput option (backwards compatible)", async () => {
-    const logDir = await setupLogDir();
-    try {
-      const source = new MockQueueSource({
-        items: [{ id: "a", task: "Task A" }],
-      });
+  await t.step(
+    "works without queueOutput option (backwards compatible)",
+    async () => {
+      const logDir = await setupLogDir();
+      try {
+        const source = new MockQueueSource({
+          items: [{ id: "a", task: "Task A" }],
+        });
 
-      const orchestrator = new Orchestrator({
-        source,
-        image: "knox-agent:latest",
-        envVars: [],
-        allowedIPs: [],
-        dir: Deno.cwd(),
-        logDir,
-        engineFactory: mockEngineFactory(),
-        // No queueOutput
-      });
+        const orchestrator = new Orchestrator({
+          source,
+          image: "knox-agent:latest",
+          envVars: [],
+          allowedIPs: [],
+          dir: Deno.cwd(),
+          logDir,
+          engineFactory: mockEngineFactory(),
+          // No queueOutput
+        });
 
-      const report = await orchestrator.run();
+        const report = await orchestrator.run();
 
-      // Should work fine without queueOutput
-      assertEquals(report.items.length, 1);
-      assertEquals(report.items[0].status, "completed");
-      assertEquals(report.outputResult, undefined);
-    } finally {
-      await cleanup(logDir);
-    }
-  });
+        // Should work fine without queueOutput
+        assertEquals(report.items.length, 1);
+        assertEquals(report.items[0].status, "completed");
+        assertEquals(report.outputResult, undefined);
+      } finally {
+        await cleanup(logDir);
+      }
+    },
+  );
 
-  await t.step("QueueOutputResult is included in the report when present", async () => {
-    const logDir = await setupLogDir();
-    try {
-      const mockOutput: QueueOutput = {
-        async deliver(): Promise<QueueOutputResult> {
-          return {
-            prs: [
-              { itemId: "a", url: "https://github.com/org/repo/pull/42", number: 42, draft: false },
-            ],
-          };
-        },
-      };
+  await t.step(
+    "QueueOutputResult is included in the report when present",
+    async () => {
+      const logDir = await setupLogDir();
+      try {
+        const mockOutput: QueueOutput = {
+          async deliver(): Promise<QueueOutputResult> {
+            return {
+              prs: [
+                {
+                  itemId: "a",
+                  url: "https://github.com/org/repo/pull/42",
+                  number: 42,
+                  draft: false,
+                },
+              ],
+            };
+          },
+        };
 
-      const source = new MockQueueSource({
-        items: [{ id: "a", task: "Task A" }],
-      });
+        const source = new MockQueueSource({
+          items: [{ id: "a", task: "Task A" }],
+        });
 
-      const orchestrator = new Orchestrator({
-        source,
-        image: "knox-agent:latest",
-        envVars: [],
-        allowedIPs: [],
-        dir: Deno.cwd(),
-        logDir,
-        engineFactory: mockEngineFactory(),
-        queueOutput: mockOutput,
-      });
+        const orchestrator = new Orchestrator({
+          source,
+          image: "knox-agent:latest",
+          envVars: [],
+          allowedIPs: [],
+          dir: Deno.cwd(),
+          logDir,
+          engineFactory: mockEngineFactory(),
+          queueOutput: mockOutput,
+        });
 
-      const report = await orchestrator.run();
+        const report = await orchestrator.run();
 
-      // outputResult attached to report
-      assert(report.outputResult !== undefined);
-      assertEquals(report.outputResult.prs?.length, 1);
-      assertEquals(report.outputResult.prs?.[0].itemId, "a");
-      assertEquals(report.outputResult.prs?.[0].number, 42);
+        // outputResult attached to report
+        assert(report.outputResult !== undefined);
+        assertEquals(report.outputResult.prs?.length, 1);
+        assertEquals(report.outputResult.prs?.[0].itemId, "a");
+        assertEquals(report.outputResult.prs?.[0].number, 42);
 
-      // Verify JSON roundtrip includes outputResult
-      const json = JSON.parse(JSON.stringify(report));
-      assert(json.outputResult);
-      assertEquals(json.outputResult.prs.length, 1);
-      assertEquals(json.outputResult.prs[0].itemId, "a");
-    } finally {
-      await cleanup(logDir);
-    }
-  });
+        // Verify JSON roundtrip includes outputResult
+        const json = JSON.parse(JSON.stringify(report));
+        assert(json.outputResult);
+        assertEquals(json.outputResult.prs.length, 1);
+        assertEquals(json.outputResult.prs[0].itemId, "a");
+      } finally {
+        await cleanup(logDir);
+      }
+    },
+  );
 
   await t.step("manifest is included in the report", async () => {
     const logDir = await setupLogDir();

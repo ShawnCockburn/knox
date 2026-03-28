@@ -72,24 +72,24 @@ knox run --task "Update API client" \
 
 #### Run options
 
-| Flag               | Default         | Description                                                      |
-| ------------------ | --------------- | ---------------------------------------------------------------- |
-| `--task`           | _(required)_    | Task description for the agent                                   |
-| `--dir`            | `.`             | Source directory to work on                                       |
-| `--model`          | `sonnet`        | Claude model to use                                              |
+| Flag               | Default         | Description                                                                                          |
+| ------------------ | --------------- | ---------------------------------------------------------------------------------------------------- |
+| `--task`           | _(required)_    | Task description for the agent                                                                       |
+| `--dir`            | `.`             | Source directory to work on                                                                          |
+| `--model`          | `sonnet`        | Claude model to use                                                                                  |
 | `--features`       | —               | Features to install (e.g., `python:3.12,deno`) — see [Container Environment](#container-environment) |
-| `--prepare`        | —               | Prepare command run with network access (e.g., `pip install flask`) |
-| `--image`          | —               | Custom Docker image (mutually exclusive with `--features`)       |
-| `--check`          | —               | Verification command run after agent signals completion          |
-| `--max-loops`      | `10`            | Maximum agent loop iterations                                    |
-| `--env`            | —               | Environment variable as `KEY=VALUE` (repeatable)                 |
-| `--prompt`         | —               | Path to custom prompt file                                       |
-| `--cpu`            | —               | CPU limit (e.g., `2`)                                            |
-| `--memory`         | —               | Memory limit (e.g., `4g`)                                        |
-| `--skip-preflight` | `false`         | Skip preflight checks                                            |
-| `--verbose`        | `false`         | Show debug-level messages                                        |
-| `--output`         | config/`branch` | Output strategy: `branch` or `pr`                                |
-| `--quiet`          | `false`         | Suppress info messages (warnings and errors only)                |
+| `--prepare`        | —               | Prepare command run with network access (e.g., `pip install flask`)                                  |
+| `--image`          | —               | Custom Docker image (mutually exclusive with `--features`)                                           |
+| `--check`          | —               | Verification command run after agent signals completion                                              |
+| `--max-loops`      | `10`            | Maximum agent loop iterations                                                                        |
+| `--env`            | —               | Environment variable as `KEY=VALUE` (repeatable)                                                     |
+| `--prompt`         | —               | Path to custom prompt file                                                                           |
+| `--cpu`            | —               | CPU limit (e.g., `2`)                                                                                |
+| `--memory`         | —               | Memory limit (e.g., `4g`)                                                                            |
+| `--skip-preflight` | `false`         | Skip preflight checks                                                                                |
+| `--verbose`        | `false`         | Show debug-level messages                                                                            |
+| `--output`         | config/`branch` | Output strategy: `branch` or `pr`                                                                    |
+| `--quiet`          | `false`         | Suppress info messages (warnings and errors only)                                                    |
 
 ### Queue — `knox queue`
 
@@ -160,8 +160,8 @@ check: "npm test"
 
 Refactor API handlers to use the new error types.
 
-Replace all `throw new Error(...)` calls with the typed error classes
-defined in `src/errors/`. Update catch blocks in middleware to match.
+Replace all `throw new Error(...)` calls with the typed error classes defined in
+`src/errors/`. Update catch blocks in middleware to match.
 ```
 
 Frontmatter fields: `dependsOn`, `model`, `features`, `prepare`, `image`,
@@ -243,14 +243,13 @@ github:
      extraction, branch creation — same as `knox run`.
    - When an item completes, its dependents become ready. When an item fails,
      its transitive dependents are **blocked**.
-   - Items in a **group** share a single branch
-     (`knox/<group>-<queueRunId>`). Each item builds on its predecessor's
-     commits via chained execution.
+   - Items in a **group** share a single branch (`knox/<group>-<queueRunId>`).
+     Each item builds on its predecessor's commits via chained execution.
 
 3. **Output** — After all items finish, Knox delivers results based on the
    output strategy:
-   - **`branch`** (default) — No additional action. Branches were created
-     during the build stage by the per-item result sink.
+   - **`branch`** (default) — No additional action. Branches were created during
+     the build stage by the per-item result sink.
    - **`pr`** — Creates a GitHub PR (via `gh` CLI) for each completed branch.
      Grouped items produce one PR per group.
 
@@ -275,12 +274,12 @@ output.
 
 #### Queue modes
 
-| Source | Mode | Flags | What it loads |
-| ------ | ---- | ----- | ------------- |
-| `directory` | Named | `--name my-queue` | Markdown directory at `.knox/queues/my-queue/` |
-| `directory` | Discovery | _(no extra flag)_ | All queues under `.knox/queues/` (alphabetical) |
-| `directory` | File | `--file ./tasks.yaml` | Single YAML manifest |
-| `github` | — | _(no extra flag)_ | Open GitHub Issues with `agent/knox` label |
+| Source      | Mode      | Flags                 | What it loads                                   |
+| ----------- | --------- | --------------------- | ----------------------------------------------- |
+| `directory` | Named     | `--name my-queue`     | Markdown directory at `.knox/queues/my-queue/`  |
+| `directory` | Discovery | _(no extra flag)_     | All queues under `.knox/queues/` (alphabetical) |
+| `directory` | File      | `--file ./tasks.yaml` | Single YAML manifest                            |
+| `github`    | —         | _(no extra flag)_     | Open GitHub Issues with `agent/knox` label      |
 
 **Discovery mode** scans `.knox/queues/` for subdirectories containing at least
 one `.md` task file. Each qualifying directory becomes a queue. Queues run
@@ -288,15 +287,15 @@ sequentially in alphabetical order with a combined summary at the end.
 
 #### Queue options
 
-| Flag        | Default         | Description                                                      |
-| ----------- | --------------- | ---------------------------------------------------------------- |
-| `--source`  | _(required)_    | Queue source: `directory` or `github`                            |
-| `--name`    | —               | Named queue from `.knox/queues/<name>/` (`--source directory`)   |
-| `--file`    | —               | Path to a YAML queue manifest (`--source directory`)             |
-| `--output`  | config/`branch` | Output strategy: `branch` or `pr`                                |
-| `--resume`  | `false`         | Resume from existing state file                                  |
-| `--verbose` | `false`         | Show agent output with `[item-id]` prefix                        |
-| `--no-tui`  | `false`         | Disable live TUI (use plain log lines)                           |
+| Flag        | Default         | Description                                                    |
+| ----------- | --------------- | -------------------------------------------------------------- |
+| `--source`  | _(required)_    | Queue source: `directory` or `github`                          |
+| `--name`    | —               | Named queue from `.knox/queues/<name>/` (`--source directory`) |
+| `--file`    | —               | Path to a YAML queue manifest (`--source directory`)           |
+| `--output`  | config/`branch` | Output strategy: `branch` or `pr`                              |
+| `--resume`  | `false`         | Resume from existing state file                                |
+| `--verbose` | `false`         | Show agent output with `[item-id]` prefix                      |
+| `--no-tui`  | `false`         | Disable live TUI (use plain log lines)                         |
 
 With `--source directory` and no `--file` or `--name`, Knox auto-discovers
 queues under `.knox/queues/`.
@@ -347,9 +346,9 @@ cached — same inputs produce the same cache tag, so subsequent runs skip the
 build.
 
 **Phase 2 — Agent (egress-filtered).** Network is restricted to Anthropic API
-endpoints and DNS only. Your code is copied in.
-Claude Code runs in a loop with `--dangerously-skip-permissions` — the container
-boundary is the permission boundary.
+endpoints and DNS only. Your code is copied in. Claude Code runs in a loop with
+`--dangerously-skip-permissions` — the container boundary is the permission
+boundary.
 
 Each loop iteration:
 
@@ -385,15 +384,15 @@ Knox uses three layers of configuration, each overriding the previous:
 
 ```yaml
 # .knox/config.yaml
-output: pr        # "branch" (default) or "pr"
+output: pr # "branch" (default) or "pr"
 pr:
-  draft: true     # create PRs as drafts
-  base: main      # target branch for PRs
-github:           # GitHub Issues source config
-  authors:        # restrict to issues by these users (defaults to current gh user)
+  draft: true # create PRs as drafts
+  base: main # target branch for PRs
+github: # GitHub Issues source config
+  authors: # restrict to issues by these users (defaults to current gh user)
     - alice
     - bob
-  defaults:       # queue-level defaults for GitHub Issues (same shape as _defaults.yaml)
+  defaults: # queue-level defaults for GitHub Issues (same shape as _defaults.yaml)
     model: sonnet
     features:
       - node:22
@@ -419,14 +418,14 @@ work begins.
 knox features list
 ```
 
-| Feature  | Default | Versions                       | Description                        |
-| -------- | ------- | ------------------------------ | ---------------------------------- |
-| `python` | 3.12    | 3.10, 3.11, 3.12, 3.13        | CPython via deadsnakes PPA         |
-| `node`   | 22      | 18, 20, 22                     | Node.js via nvm (separate from Claude Code's Node) |
-| `deno`   | 2.0     | 1.46, 2.0, 2.1                | Deno runtime                       |
-| `go`     | 1.22    | 1.21, 1.22, 1.23              | Go from official tarball           |
-| `rust`   | 1.78    | 1.76, 1.77, 1.78, 1.79, 1.80  | Rust via rustup                    |
-| `ruby`   | 3.3     | 3.1, 3.2, 3.3                 | Ruby via ruby-install              |
+| Feature  | Default | Versions                     | Description                                        |
+| -------- | ------- | ---------------------------- | -------------------------------------------------- |
+| `python` | 3.12    | 3.10, 3.11, 3.12, 3.13       | CPython via deadsnakes PPA                         |
+| `node`   | 22      | 18, 20, 22                   | Node.js via nvm (separate from Claude Code's Node) |
+| `deno`   | 2.0     | 1.46, 2.0, 2.1               | Deno runtime                                       |
+| `go`     | 1.22    | 1.21, 1.22, 1.23             | Go from official tarball                           |
+| `rust`   | 1.78    | 1.76, 1.77, 1.78, 1.79, 1.80 | Rust via rustup                                    |
+| `ruby`   | 3.3     | 3.1, 3.2, 3.3                | Ruby via ruby-install                              |
 
 Use features on the CLI, in `_defaults.yaml`, or in task frontmatter:
 
@@ -447,8 +446,8 @@ prepare: "cargo build"
 ---
 ```
 
-Bare feature names (e.g., `python`) use the default version. Features install
-in alphabetical order for deterministic caching. Multiple features stack into a
+Bare feature names (e.g., `python`) use the default version. Features install in
+alphabetical order for deterministic caching. Multiple features stack into a
 single image — `features: [python, deno, rust]` produces a container with all
 three runtimes on PATH.
 
@@ -485,8 +484,8 @@ or install Claude Code at that path.
 
 ### Per-item environments
 
-In queues, each item can declare its own environment. Per-item config **replaces**
-queue defaults entirely (no merging):
+In queues, each item can declare its own environment. Per-item config
+**replaces** queue defaults entirely (no merging):
 
 ```yaml
 # _defaults.yaml — applies to items with no environment config
@@ -595,25 +594,25 @@ const knox = new Knox({
 | Code  | Meaning                                         |
 | ----- | ----------------------------------------------- |
 | `0`   | Task completed successfully                     |
-| `1`   | Max loops exhausted (partial results extracted)  |
-| `2`   | Preflight or validation failure                  |
-| `3`   | Crash or fatal error                             |
-| `130` | Interrupted (SIGINT)                             |
+| `1`   | Max loops exhausted (partial results extracted) |
+| `2`   | Preflight or validation failure                 |
+| `3`   | Crash or fatal error                            |
+| `130` | Interrupted (SIGINT)                            |
 
 ### `knox queue`
 
-| Code | Meaning                            |
-| ---- | ---------------------------------- |
-| `0`  | All items completed                |
-| `1`  | Some items failed or blocked       |
-| `2`  | Validation failure (bad manifest)  |
-| `3`  | Orchestrator crash                 |
+| Code | Meaning                           |
+| ---- | --------------------------------- |
+| `0`  | All items completed               |
+| `1`  | Some items failed or blocked      |
+| `2`  | Validation failure (bad manifest) |
+| `3`  | Orchestrator crash                |
 
 ## License
 
 Knox is licensed under the [Elastic License 2.0](LICENSE). You may use, modify,
-and distribute Knox — including in commercial settings — but you may not offer it
-as a hosted or managed service to third parties without permission.
+and distribute Knox — including in commercial settings — but you may not offer
+it as a hosted or managed service to third parties without permission.
 
 ## Development
 

@@ -105,7 +105,10 @@ import type { KnoxOutcome } from "../src/engine/knox.ts";
 
 /** Unwrap a KnoxOutcome, failing the test if not ok. */
 function unwrap(outcome: KnoxOutcome) {
-  assert(outcome.ok, `Expected ok outcome, got: ${!outcome.ok ? outcome.error : ""}`);
+  assert(
+    outcome.ok,
+    `Expected ok outcome, got: ${!outcome.ok ? outcome.error : ""}`,
+  );
   return outcome.result;
 }
 

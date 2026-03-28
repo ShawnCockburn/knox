@@ -6,7 +6,10 @@ import {
 } from "../../src/queue/queue_discovery.ts";
 import { DirectoryQueueSource } from "../../src/queue/directory_queue_source.ts";
 import type { DiscoveredQueue } from "../../src/queue/queue_discovery.ts";
-import type { OrchestratorOptions, QueueReport } from "../../src/queue/orchestrator.ts";
+import type {
+  OrchestratorOptions,
+  QueueReport,
+} from "../../src/queue/orchestrator.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -21,7 +24,10 @@ async function cleanup(dir: string) {
 }
 
 /** Build a minimal QueueReport for testing. */
-function fakeReport(id: string, status: "completed" | "failed" = "completed"): QueueReport {
+function fakeReport(
+  id: string,
+  status: "completed" | "failed" = "completed",
+): QueueReport {
   return {
     queueRunId: `run-${id}`,
     startedAt: new Date().toISOString(),
@@ -45,7 +51,10 @@ Deno.test("discoverQueues - discovers all queue directories under .knox/queues/"
   try {
     const queuesDir = `${root}/.knox/queues`;
     await Deno.mkdir(`${queuesDir}/auth-refactor`, { recursive: true });
-    await Deno.writeTextFile(`${queuesDir}/auth-refactor/task1.md`, "Do auth thing");
+    await Deno.writeTextFile(
+      `${queuesDir}/auth-refactor/task1.md`,
+      "Do auth thing",
+    );
 
     const queues = await discoverQueues(root);
     assertEquals(queues.length, 1);
@@ -113,7 +122,10 @@ Deno.test("discoverQueues - returns queues sorted alphabetically", async () => {
     const queuesDir = `${root}/.knox/queues`;
     for (const name of ["zebra", "alpha", "mango"]) {
       await Deno.mkdir(`${queuesDir}/${name}`, { recursive: true });
-      await Deno.writeTextFile(`${queuesDir}/${name}/task.md`, `Task for ${name}`);
+      await Deno.writeTextFile(
+        `${queuesDir}/${name}/task.md`,
+        `Task for ${name}`,
+      );
     }
 
     const queues = await discoverQueues(root);
@@ -158,7 +170,10 @@ Deno.test("DirectoryQueueSource - loads .md files as queue items", async () => {
     if (result.ok) {
       const ids = result.manifest.items.map((i) => i.id);
       assertEquals(ids, ["add-tests", "fix-bug"]); // sorted
-      assertEquals(result.manifest.items.find((i) => i.id === "fix-bug")?.task, "Fix the login bug");
+      assertEquals(
+        result.manifest.items.find((i) => i.id === "fix-bug")?.task,
+        "Fix the login bug",
+      );
     }
   } finally {
     await cleanup(dir);

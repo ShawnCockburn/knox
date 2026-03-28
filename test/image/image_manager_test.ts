@@ -74,42 +74,45 @@ Deno.test("ImageManager", async (t) => {
     assertEquals(image.startsWith("knox-cache:"), true);
   });
 
-  await t.step("ensureFeatureImage installs features then prepare", async () => {
-    const runtime = new MockRuntime();
-    let imageExistsCallCount = 0;
-    runtime.imageExists = (tag: string) => {
-      runtime.calls.push({ method: "imageExists", args: [tag] });
-      imageExistsCallCount++;
-      return Promise.resolve(imageExistsCallCount === 1);
-    };
-    // exec results: feature install success, prepare success
-    runtime.execResults = [
-      { exitCode: 0, stdout: "", stderr: "" },
-      { exitCode: 0, stdout: "", stderr: "" },
-    ];
-    const manager = new ImageManager(runtime);
+  await t.step(
+    "ensureFeatureImage installs features then prepare",
+    async () => {
+      const runtime = new MockRuntime();
+      let imageExistsCallCount = 0;
+      runtime.imageExists = (tag: string) => {
+        runtime.calls.push({ method: "imageExists", args: [tag] });
+        imageExistsCallCount++;
+        return Promise.resolve(imageExistsCallCount === 1);
+      };
+      // exec results: feature install success, prepare success
+      runtime.execResults = [
+        { exitCode: 0, stdout: "", stderr: "" },
+        { exitCode: 0, stdout: "", stderr: "" },
+      ];
+      const manager = new ImageManager(runtime);
 
-    const image = await manager.ensureFeatureImage({
-      features: [MOCK_FEATURE],
-      prepare: "pip install flask",
-    });
+      const image = await manager.ensureFeatureImage({
+        features: [MOCK_FEATURE],
+        prepare: "pip install flask",
+      });
 
-    // Should have: copyIn (install script), exec (feature install), exec (prepare)
-    assertEquals(runtime.callsTo("copyIn").length, 1);
-    const execCalls = runtime.callsTo("exec");
-    assertEquals(execCalls.length, 2);
+      // Should have: copyIn (install script), exec (feature install), exec (prepare)
+      assertEquals(runtime.callsTo("copyIn").length, 1);
+      const execCalls = runtime.callsTo("exec");
+      assertEquals(execCalls.length, 2);
 
-    // First exec: feature install script
-    const featureCmd = execCalls[0].args[1] as string[];
-    assertEquals(featureCmd[0], "bash");
-    assertEquals(featureCmd[2], "3.12");
+      // First exec: feature install script
+      const featureCmd = execCalls[0].args[1] as string[];
+      assertEquals(featureCmd[0], "bash");
+      assertEquals(featureCmd[2], "3.12");
 
-    // Second exec: prepare command
-    const prepareCmd = execCalls[1].args[1] as string[];
-    assertEquals(prepareCmd, ["sh", "-c", "pip install flask"]);
+      // Second exec: prepare command
+      const prepareCmd = execCalls[1].args[1] as string[];
+      assertEquals(prepareCmd, ["sh", "-c", "pip install flask"]);
 
-    assertEquals(image.startsWith("knox-cache:"), true);
-  });
+      assertEquals(image.startsWith("knox-cache:"), true);
+    },
+  );
 
   await t.step("ensureFeatureImage uses cache when available", async () => {
     const runtime = new MockRuntime();
@@ -150,7 +153,9 @@ Deno.test("ImageManager", async (t) => {
       runtime.imageExistsResult = true;
       const manager = new ImageManager(runtime);
 
-      const image1 = await manager.ensureFeatureImage({ prepare: "npm install" });
+      const image1 = await manager.ensureFeatureImage({
+        prepare: "npm install",
+      });
       const image2 = await manager.ensureFeatureImage({
         prepare: "pip install -r requirements.txt",
       });
@@ -169,8 +174,12 @@ Deno.test("ImageManager", async (t) => {
       const feature312 = { ...MOCK_FEATURE, version: "3.12" };
       const feature311 = { ...MOCK_FEATURE, version: "3.11" };
 
-      const image1 = await manager.ensureFeatureImage({ features: [feature312] });
-      const image2 = await manager.ensureFeatureImage({ features: [feature311] });
+      const image1 = await manager.ensureFeatureImage({
+        features: [feature312],
+      });
+      const image2 = await manager.ensureFeatureImage({
+        features: [feature311],
+      });
 
       assertEquals(image1 !== image2, true);
     },
@@ -225,15 +234,20 @@ Deno.test("ImageManager", async (t) => {
     assertEquals(image.startsWith("knox-cache:"), true);
   });
 
-  await t.step("ensureCustomImage returns image directly without prepare", async () => {
-    const runtime = new MockRuntime();
-    const manager = new ImageManager(runtime);
+  await t.step(
+    "ensureCustomImage returns image directly without prepare",
+    async () => {
+      const runtime = new MockRuntime();
+      const manager = new ImageManager(runtime);
 
-    const image = await manager.ensureCustomImage({ image: "python:3.12-slim" });
+      const image = await manager.ensureCustomImage({
+        image: "python:3.12-slim",
+      });
 
-    assertEquals(image, "python:3.12-slim");
-    assertEquals(runtime.callsTo("createContainer").length, 0);
-  });
+      assertEquals(image, "python:3.12-slim");
+      assertEquals(runtime.callsTo("createContainer").length, 0);
+    },
+  );
 
   await t.step("ensureCustomImage builds and caches with prepare", async () => {
     const runtime = new MockRuntime();

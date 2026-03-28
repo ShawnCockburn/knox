@@ -95,7 +95,7 @@ pr:
         await assertRejects(
           () => resolveConfig({ dir, command: "queue" }),
           Error,
-          'Invalid output value in .knox/config.yaml',
+          "Invalid output value in .knox/config.yaml",
         );
       } finally {
         await cleanup(dir);

@@ -229,7 +229,12 @@ Deno.test("validateManifest", async (t) => {
   await t.step("rejects features + image on same item", () => {
     const result = validateManifest({
       items: [
-        { id: "a", task: "Do A", features: ["python"], image: "my-image:latest" },
+        {
+          id: "a",
+          task: "Do A",
+          features: ["python"],
+          image: "my-image:latest",
+        },
       ],
     });
     assertEquals(result.errors.length >= 1, true);
@@ -250,7 +255,12 @@ Deno.test("validateManifest", async (t) => {
   await t.step("accepts features + prepare on same item", () => {
     const result = validateManifest({
       items: [
-        { id: "a", task: "Do A", features: ["python:3.12"], prepare: "pip install flask" },
+        {
+          id: "a",
+          task: "Do A",
+          features: ["python:3.12"],
+          prepare: "pip install flask",
+        },
       ],
     });
     assertEquals(result.errors.length, 0);
@@ -259,7 +269,12 @@ Deno.test("validateManifest", async (t) => {
   await t.step("accepts image + prepare on same item", () => {
     const result = validateManifest({
       items: [
-        { id: "a", task: "Do A", image: "python:3.12-slim", prepare: "pip install flask" },
+        {
+          id: "a",
+          task: "Do A",
+          image: "python:3.12-slim",
+          prepare: "pip install flask",
+        },
       ],
     });
     assertEquals(result.errors.length, 0);

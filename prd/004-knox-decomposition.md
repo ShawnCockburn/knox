@@ -49,8 +49,8 @@ Four alternative designs were evaluated before arriving at this approach:
   call Deno directly, making the abstraction incomplete.
 
 - **Internal phase functions** (same public API, typed functions internally):
-  Better than raw phases, but still temporal decomposition. Knox.run() becomes
-  a 90-line pipeline of function calls — cleaner, but still shallow.
+  Better than raw phases, but still temporal decomposition. Knox.run() becomes a
+  90-line pipeline of function calls — cleaner, but still shallow.
 
 All four decompose along the **temporal axis** (phases in a pipeline). Clean
 architecture decomposes along the **responsibility axis** (objects that own
@@ -210,8 +210,8 @@ paths, no git plumbing.
 
 - `ContainerSession` wraps `ContainerRuntime` (already an interface with
   `MockRuntime` for testing). No new boundary abstractions needed.
-- `AgentRunner` depends on `ContainerSession`, which can be mocked or stubbed
-  in tests without `MockRuntime`.
+- `AgentRunner` depends on `ContainerSession`, which can be mocked or stubbed in
+  tests without `MockRuntime`.
 - Pre-container functions (`resolveAuth`, `resolveAllowedIPs`) use Deno APIs
   directly. These remain local-substitutable via env vars and DNS mocking in
   integration tests, or can be made injectable later if test friction warrants.
@@ -272,7 +272,8 @@ a simple stub implementing 5 methods.
 
 ### What ContainerSession should own
 
-- All container lifecycle: creation, configuration, execution, extraction, cleanup
+- All container lifecycle: creation, configuration, execution, extraction,
+  cleanup
 - Container path constants (single source of truth)
 - Git plumbing inside the container (verify, exclude, bundle)
 - Source copy and ownership setup
