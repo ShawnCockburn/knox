@@ -185,6 +185,7 @@ if (effectiveCommand === "init") {
     ? new PullRequestQueueOutput({
       draft: config.pr?.draft,
       base: config.pr?.base,
+      repoDir: projectDir,
     })
     : new BranchQueueOutput();
 

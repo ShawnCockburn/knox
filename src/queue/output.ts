@@ -20,6 +20,7 @@ export class BranchQueueOutput implements QueueOutput {
 export interface PullRequestOptions {
   draft?: boolean;
   base?: string;
+  repoDir?: string;
 }
 
 /**
@@ -38,12 +39,30 @@ export class PullRequestQueueOutput implements QueueOutput {
       return;
     }
 
+    const seen = new Set<string>();
     for (const item of completed) {
-      await this.createPR(item.id, item.branch!);
+      const branch = item.branch!;
+      if (seen.has(branch)) continue;
+      seen.add(branch);
+      await this.createPR(item.id, branch);
     }
   }
 
   private async createPR(itemId: string, branch: string): Promise<void> {
+    const repoDir = this.options.repoDir;
+    const pushCmd = new Deno.Command("git", {
+      args: ["push", "origin", branch],
+      ...(repoDir ? { cwd: repoDir } : {}),
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const pushResult = await pushCmd.output();
+    if (!pushResult.success) {
+      const err = new TextDecoder().decode(pushResult.stderr).trim();
+      log.error(`Failed to push branch '${branch}': ${err}`);
+      return;
+    }
+
     const args = [
       "pr",
       "create",

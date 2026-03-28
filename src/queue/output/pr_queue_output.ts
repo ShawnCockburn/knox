@@ -258,6 +258,15 @@ export class PullRequestQueueOutput implements QueueOutput {
       args.push("--reviewer", reviewer);
     }
 
+    const pushResult = await this.runner(
+      ["git", "push", "origin", opts.branch],
+      repoDir,
+    );
+    if (!pushResult.success) {
+      log.warn(`Failed to push branch '${opts.branch}': ${pushResult.stderr}`);
+      return null;
+    }
+
     const result = await this.runner(args, repoDir);
 
     if (!result.success) {
