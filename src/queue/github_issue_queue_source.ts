@@ -102,6 +102,26 @@ export class GitHubIssueQueueSource implements QueueSource {
       return { ok: false, errors };
     }
 
+    // Resolve #N shorthand in dependsOn to full item IDs.
+    // Build a reverse map: issue number → item ID
+    const numberToItemId = new Map<number, string>();
+    for (const [itemId, issueNum] of this.issueNumbers) {
+      numberToItemId.set(issueNum, itemId);
+    }
+
+    const resolvedItems: typeof items = items.map((item) => {
+      if (!item.dependsOn) return item;
+      const deps = item.dependsOn.map((dep) => {
+        const match = dep.match(/^#(\d+)$/);
+        if (!match) return dep;
+        const num = parseInt(match[1], 10);
+        return numberToItemId.get(num) ?? dep; // leave as-is; validation will catch it
+      });
+      return { ...item, dependsOn: deps };
+    });
+    items.length = 0;
+    items.push(...resolvedItems);
+
     // Assemble raw manifest and validate
     const rawManifest = {
       items,

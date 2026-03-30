@@ -1,5 +1,8 @@
 import { assert, assertEquals } from "@std/assert";
-import { QueueTUI } from "../../../src/queue/tui/queue_tui.ts";
+import {
+  QueueTUI,
+  truncateAnsi,
+} from "../../../src/queue/tui/queue_tui.ts";
 
 /** Capture all write calls from QueueTUI. */
 function createCapture(): { writes: string[]; writeFn: (s: string) => void } {
@@ -371,4 +374,76 @@ Deno.test("Phase 3 TUI: formatSummary", async (t) => {
       `expected elapsed time, got: ${summary}`,
     );
   });
+});
+
+Deno.test("truncateAnsi", async (t) => {
+  await t.step("returns short plain strings unchanged", () => {
+    assertEquals(truncateAnsi("hello", 80), "hello");
+  });
+
+  await t.step("truncates plain string at maxWidth", () => {
+    const result = truncateAnsi("abcdefghij", 5);
+    // Should contain only the first 5 visible chars plus RESET
+    assert(result.startsWith("abcde"), `got: ${result}`);
+    assert(result.endsWith("\x1b[0m"), "should end with RESET");
+  });
+
+  await t.step("preserves ANSI codes and does not count them toward width", () => {
+    // 3 visible chars with color codes around them
+    const input = "\x1b[32mABC\x1b[0m";
+    assertEquals(truncateAnsi(input, 80), input);
+  });
+
+  await t.step("truncates colored text correctly", () => {
+    // "hello" in green = 5 visible chars
+    const green = "\x1b[32m";
+    const reset = "\x1b[0m";
+    const input = `${green}hello world${reset}`;
+    const result = truncateAnsi(input, 5);
+    // Should keep "hello" (5 chars) and append reset
+    assert(
+      result.includes("hello") && !result.includes("world"),
+      `expected truncation at 5 visible chars, got: ${JSON.stringify(result)}`,
+    );
+  });
+
+  await t.step("handles string exactly at maxWidth", () => {
+    assertEquals(truncateAnsi("12345", 5), "12345");
+  });
+
+  await t.step("handles empty string", () => {
+    assertEquals(truncateAnsi("", 80), "");
+  });
+});
+
+Deno.test("Render truncates lines to terminal width", () => {
+  const longId =
+    "gh-42-very-long-github-issue-slug-that-exceeds-terminal-width-significantly";
+  const { writes, writeFn } = createCapture();
+  const tui = new QueueTUI([longId], {
+    verbose: true,
+    columns: 40, // narrow terminal
+    rows: 24,
+    write: writeFn,
+  });
+
+  // Add a long log line
+  tui.appendLine(longId, "A".repeat(200));
+  tui.markItemRunning(longId);
+  tui.start();
+  tui.stop();
+
+  // Extract rendered frame lines: each is between \r\x1b[2K and \n
+  const allOutput = writes.join("");
+  const frameLinePattern = /\r\x1b\[2K([^\n]*)\n/g;
+  let match;
+  while ((match = frameLinePattern.exec(allOutput)) !== null) {
+    const line = match[1];
+    // Strip all ANSI escape sequences to measure visible width
+    const visible = line.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
+    assert(
+      visible.length <= 40,
+      `line exceeds terminal width (${visible.length} > 40): ${JSON.stringify(visible)}`,
+    );
+  }
 });

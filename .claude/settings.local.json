@@ -14,7 +14,8 @@
       "Bash(find /Users/shawn/Projects/knox -name *test* -o -name *spec*)",
       "Read(//private/tmp/**)",
       "Bash(deno run:*)",
-      "Bash(echo \"EXIT_CODE=$?\")"
+      "Bash(echo \"EXIT_CODE=$?\")",
+      "Bash(xargs ls:*)"
     ]
   }
 }

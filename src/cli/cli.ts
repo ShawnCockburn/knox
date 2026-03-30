@@ -313,6 +313,9 @@ if (effectiveCommand === "init") {
         );
         Deno.exit(allCompleted ? 0 : 1);
       } catch (e) {
+        renderer.stop();
+        if (useTUI) log.unmute();
+
         if (e instanceof OrchestratorValidationError) {
           for (const err of e.errors) {
             log.error(err.message);
@@ -516,6 +519,8 @@ if (effectiveCommand === "init") {
 
     const runtime = new DockerRuntime();
 
+    let renderer: StaticRenderer | QueueTUI | undefined;
+
     try {
       const loadResult = await source.load();
       if (!loadResult.ok) {
@@ -536,7 +541,6 @@ if (effectiveCommand === "init") {
       const logDir = resolve(projectDir, ".knox", "github.logs");
 
       const itemIds = manifest.items.map((i) => i.id);
-      let renderer: StaticRenderer | QueueTUI;
       if (useTUI) {
         renderer = new QueueTUI(itemIds, { verbose: isVerbose, queueName });
       } else {
@@ -589,6 +593,9 @@ if (effectiveCommand === "init") {
       const allCompleted = report.items.every((i) => i.status === "completed");
       Deno.exit(allCompleted ? 0 : 1);
     } catch (e) {
+      renderer?.stop();
+      if (useTUI) log.unmute();
+
       if (e instanceof OrchestratorValidationError) {
         for (const err of e.errors) {
           log.error(err.message);

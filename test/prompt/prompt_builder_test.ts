@@ -1,6 +1,9 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import { PromptBuilder } from "../../src/engine/prompt/prompt_builder.ts";
-import { DEFAULT_PROMPT } from "../../src/engine/prompt/default_prompt.ts";
+import {
+  DEFAULT_PROMPT,
+  SENTINEL_INSTRUCTION,
+} from "../../src/engine/prompt/default_prompt.ts";
 
 const builder = new PromptBuilder();
 
@@ -110,17 +113,36 @@ Deno.test("PromptBuilder", async (t) => {
     assertStringIncludes(result, "=== CHECK FAILURE");
   });
 
-  await t.step("default prompt contains all 7 phases", () => {
+  await t.step("default prompt contains all 6 phases", () => {
     assertStringIncludes(DEFAULT_PROMPT, "Phase 1: READ");
     assertStringIncludes(DEFAULT_PROMPT, "Phase 2: EXPLORE");
     assertStringIncludes(DEFAULT_PROMPT, "Phase 3: PLAN");
     assertStringIncludes(DEFAULT_PROMPT, "Phase 4: EXECUTE");
     assertStringIncludes(DEFAULT_PROMPT, "Phase 5: COMMIT");
     assertStringIncludes(DEFAULT_PROMPT, "Phase 6: UPDATE");
-    assertStringIncludes(DEFAULT_PROMPT, "Phase 7: SIGNAL");
   });
 
-  await t.step("default prompt contains KNOX_COMPLETE sentinel", () => {
-    assertStringIncludes(DEFAULT_PROMPT, "KNOX_COMPLETE");
+  await t.step("sentinel instruction contains KNOX_COMPLETE", () => {
+    assertStringIncludes(SENTINEL_INSTRUCTION, "KNOX_COMPLETE");
+  });
+
+  await t.step("built prompt always includes sentinel instruction", () => {
+    const result = builder.build({
+      task: "test",
+      loopNumber: 1,
+      maxLoops: 10,
+    });
+    assertStringIncludes(result, "KNOX_COMPLETE");
+  });
+
+  await t.step("custom prompt includes sentinel instruction", () => {
+    const result = builder.build({
+      task: "test",
+      loopNumber: 1,
+      maxLoops: 10,
+      customPrompt: "You are a custom agent.",
+    });
+    assertStringIncludes(result, "KNOX_COMPLETE");
+    assertStringIncludes(result, "COMPLETION SIGNAL");
   });
 });

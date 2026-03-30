@@ -79,67 +79,97 @@ export class ContainerSession {
     } = options;
 
     // Prepare source
+    log.debug(`[session] Preparing source for run ${runId}...`);
     log.info(`Preparing source...`);
     const prepareResult = await sourceProvider.prepare(runId);
+    log.debug(`[session] Source prepared: hostPath=${prepareResult.hostPath}`);
+    log.debug(`[session] Source metadata: ${JSON.stringify(prepareResult.metadata)}`);
     for (const warning of prepareResult.warnings ?? []) {
       log.warn(warning);
     }
 
     // Create container
     log.info(`Creating container (API-only network)...`);
+    const containerEnv = [
+      ...envVars,
+      // Prevent Claude Code from checking npm for updates (network is restricted)
+      "DISABLE_AUTOUPDATE=1",
+    ];
+    log.debug(`[session] Image: ${image}`);
+    log.debug(`[session] Env vars: ${containerEnv.map((e) => e.split("=")[0]).join(", ")}`);
+    log.debug(`[session] CPU: ${cpuLimit ?? "default"}, Memory: ${memoryLimit ?? "default"}`);
     const containerId = await runtime.createContainer({
       image,
       name: `knox-${runId}`,
       workdir: WORKSPACE,
-      env: envVars,
+      env: containerEnv,
       networkEnabled: true,
       capAdd: ["NET_ADMIN"],
       cpuLimit,
       memoryLimit,
     });
-    log.debug(`Container: ${containerId}`);
+    log.debug(`[session] Container created: ${containerId}`);
 
     // Copy source into container and fix ownership
     log.info(`Copying source into container...`);
+    log.debug(`[session] Copying ${prepareResult.hostPath}/. → ${WORKSPACE}`);
     await runtime.copyIn(
       containerId,
       prepareResult.hostPath + "/.",
       WORKSPACE,
     );
-    await runtime.exec(
+    log.debug(`[session] Source copied, fixing ownership...`);
+    const chownResult = await runtime.exec(
       containerId,
       ["chown", "-R", "knox:knox", WORKSPACE],
       { user: "root" },
     );
+    if (chownResult.exitCode !== 0) {
+      log.debug(`[session] chown failed (exit ${chownResult.exitCode}): ${chownResult.stderr}`);
+    } else {
+      log.debug(`[session] Ownership fixed`);
+    }
 
     // Cleanup source temp files
+    log.debug(`[session] Cleaning up source temp files...`);
     await sourceProvider.cleanup(runId);
 
     // Lock down network to API-only egress
+    log.debug(`[session] Restricting network to ${allowedIPs.length} IPs: ${allowedIPs.join(", ")}`);
     await runtime.restrictNetwork(containerId, allowedIPs);
-    log.debug(`Network restricted to API endpoints only`);
+    log.debug(`[session] Network restricted`);
 
     // Verify git repo exists in workspace
+    log.debug(`[session] Verifying git repo in workspace...`);
     const gitCheck = await runtime.exec(containerId, [
       "sh",
       "-c",
       `cd ${WORKSPACE} && git rev-parse --git-dir`,
     ]);
     if (gitCheck.exitCode !== 0) {
+      log.debug(`[session] git check failed: stdout=${gitCheck.stdout} stderr=${gitCheck.stderr}`);
       // Clean up container before throwing
       await runtime.remove(containerId).catch(() => {});
       throw new Error(
         "No .git directory in workspace after source copy — aborting",
       );
     }
+    log.debug(`[session] Git repo verified: ${gitCheck.stdout.trim()}`);
 
     // Exclude knox internal files from agent commits
-    await runtime.exec(containerId, [
+    log.debug(`[session] Setting up git exclude...`);
+    const excludeResult = await runtime.exec(containerId, [
       "sh",
       "-c",
       `cd ${WORKSPACE} && printf 'knox-progress.txt\\n.knox/\\n' >> .git/info/exclude`,
     ]);
+    if (excludeResult.exitCode !== 0) {
+      log.debug(`[session] git exclude setup failed (exit ${excludeResult.exitCode}): ${excludeResult.stderr}`);
+    } else {
+      log.debug(`[session] Git exclude configured`);
+    }
 
+    log.debug(`[session] Container session ready: ${containerId}`);
     return new ContainerSession(
       runtime,
       containerId,
@@ -169,10 +199,13 @@ export class ContainerSession {
 
   /** Check whether the workspace has uncommitted changes. */
   async hasDirtyTree(): Promise<boolean> {
+    log.debug(`[session] Checking for dirty tree...`);
     const result = await this.exec(
       ["git", "status", "--porcelain"],
     );
-    return result.stdout.trim().length > 0;
+    const dirty = result.stdout.trim().length > 0;
+    log.debug(`[session] Dirty tree: ${dirty}`);
+    return dirty;
   }
 
   /** Copy a file from the host into the container. */
@@ -182,18 +215,22 @@ export class ContainerSession {
 
   /** Create a git bundle inside the container and copy it to the host run directory. Returns host-side bundle path. */
   async extractBundle(): Promise<string> {
+    log.debug(`[session] Creating git bundle...`);
     const bundleResult = await this.exec(
       ["git", "bundle", "create", BUNDLE_PATH, "HEAD"],
     );
     if (bundleResult.exitCode !== 0) {
       throw new Error(`git bundle create failed: ${bundleResult.stderr}`);
     }
+    log.debug(`[session] Bundle created at ${BUNDLE_PATH}`);
     const hostBundlePath = `${this._runDir}/bundle.git`;
+    log.debug(`[session] Copying bundle to host: ${hostBundlePath}`);
     await this.runtime.copyOut(
       this._containerId,
       BUNDLE_PATH,
       hostBundlePath,
     );
+    log.debug(`[session] Bundle extracted to ${hostBundlePath}`);
     return hostBundlePath;
   }
 
@@ -201,7 +238,9 @@ export class ContainerSession {
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    log.debug(`[session] Disposing container ${this._containerId}...`);
     log.info(`Cleaning up container...`);
     await this.runtime.remove(this._containerId);
+    log.debug(`[session] Container removed`);
   }
 }

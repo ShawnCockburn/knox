@@ -27,6 +27,34 @@ const CYAN = `${ESC}36m`;
 const MAGENTA = `${ESC}35m`;
 const BLUE = `${ESC}34m`;
 
+/**
+ * Truncate a string containing ANSI escape codes to a maximum visible width.
+ * ANSI escape sequences (CSI sequences like \x1b[...m) are not counted toward
+ * the width, but are preserved up to the truncation point. A reset code is
+ * appended if the string was actually truncated.
+ */
+export function truncateAnsi(str: string, maxWidth: number): string {
+  let visible = 0;
+  let i = 0;
+
+  while (i < str.length && visible < maxWidth) {
+    // Skip over CSI escape sequences (ESC [ ... final_byte)
+    if (str.charCodeAt(i) === 0x1b && str.charCodeAt(i + 1) === 0x5b) {
+      i += 2; // skip ESC [
+      // Consume parameter bytes (0x30–0x3f) and intermediate bytes (0x20–0x2f)
+      while (i < str.length && str.charCodeAt(i) >= 0x20 && str.charCodeAt(i) <= 0x3f) i++;
+      // Consume the final byte (0x40–0x7e)
+      if (i < str.length) i++;
+      continue;
+    }
+    visible++;
+    i++;
+  }
+
+  if (i >= str.length) return str; // no truncation needed
+  return str.slice(0, i) + RESET;
+}
+
 /** Color palette for log panel item prefixes. */
 const LOG_COLORS = [CYAN, MAGENTA, YELLOW, BLUE, GREEN];
 
@@ -241,6 +269,14 @@ export class QueueTUI {
     const maxHeight = Math.max(1, rows - 1);
     if (lines.length > maxHeight) {
       lines.length = maxHeight;
+    }
+
+    // Truncate every line to terminal width to prevent wrapping.
+    // Wrapped lines would occupy extra physical rows that lastLineCount
+    // doesn't account for, causing the cursor-up to undershoot and the
+    // frame to duplicate on each render cycle.
+    for (let i = 0; i < lines.length; i++) {
+      lines[i] = truncateAnsi(lines[i], columns);
     }
 
     // --- Overwrite in place (single buffered write) ---

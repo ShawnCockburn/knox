@@ -1,4 +1,4 @@
-import { DEFAULT_PROMPT } from "./default_prompt.ts";
+import { DEFAULT_PROMPT, SENTINEL_INSTRUCTION } from "./default_prompt.ts";
 
 /** Context for constructing a per-loop prompt. */
 export interface PromptContext {
@@ -18,6 +18,9 @@ export class PromptBuilder {
 
     // Base prompt
     sections.push(ctx.customPrompt ?? DEFAULT_PROMPT);
+
+    // Sentinel instruction (always included, even with custom prompts)
+    sections.push(SENTINEL_INSTRUCTION);
 
     // Task
     sections.push(`=== TASK ===\n${ctx.task}`);

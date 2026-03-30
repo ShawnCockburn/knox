@@ -145,10 +145,11 @@ export class Orchestrator {
       }
     }
 
-    await this.writeState(source, state);
-
-    // 3. Create log directory
+    // 3. Create log directory (must happen before state write, since
+    //    the state file may live under the same parent .knox/ directory)
     await Deno.mkdir(this.options.logDir, { recursive: true });
+
+    await this.writeState(source, state);
 
     // 4. Schedule and run items
     await this.runScheduler(manifest, state, queueRunId);
@@ -394,7 +395,7 @@ export class Orchestrator {
           outcome,
         };
         log.info(`[${item.id}] Aborted`);
-      } else if (outcome.ok) {
+      } else if (outcome.ok && outcome.result.completed) {
         const branch = outcome.result.sink.strategy === "host-git"
           ? outcome.result.sink.branchName
           : undefined;
@@ -419,7 +420,22 @@ export class Orchestrator {
             branch ? ` → ${branch}` : ""
           }`,
         );
-      } else {
+      } else if (outcome.ok && !outcome.result.completed) {
+        // Agent ran successfully but never signaled KNOX_COMPLETE
+        state.items[item.id] = {
+          status: "failed",
+          startedAt: itemStartedAt,
+          finishedAt: itemFinishedAt,
+          durationMs: itemDurationMs,
+          outcome,
+        };
+
+        this.options.onItemFailed?.(item.id, "Agent did not signal completion");
+        log.info(
+          `[${item.id}] Failed: agent ran ${outcome.result.loopsRun} loop(s) without signaling completion`,
+        );
+        this.blockDependents(item.id, manifest, state);
+      } else if (!outcome.ok) {
         state.items[item.id] = {
           status: "failed",
           startedAt: itemStartedAt,
@@ -429,7 +445,7 @@ export class Orchestrator {
         };
 
         this.options.onItemFailed?.(item.id, outcome.error);
-        log.info(`[${item.id}] Failed: ${outcome.error}`);
+        log.info(`[${item.id}] Failed (phase: ${outcome.phase}): ${outcome.error}`);
 
         // Block dependents transitively
         this.blockDependents(item.id, manifest, state);
@@ -448,7 +464,10 @@ export class Orchestrator {
         durationMs: itemDurationMs,
       };
 
-      log.error(`[${item.id}] Crashed: ${e instanceof Error ? e.message : e}`);
+      const errMsg = e instanceof Error ? e.message : String(e);
+      const stack = e instanceof Error ? e.stack : undefined;
+      log.error(`[${item.id}] Crashed: ${errMsg}`);
+      if (stack) log.debug(`[${item.id}] Stack: ${stack}`);
       this.blockDependents(item.id, manifest, state);
     }
 

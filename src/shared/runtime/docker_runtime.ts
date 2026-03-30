@@ -12,6 +12,7 @@ import type {
   ExecOptions,
   OnLineCallback,
 } from "./container_runtime.ts";
+import { log } from "../log.ts";
 
 /** ContainerRuntime implementation that shells out to the docker CLI. */
 export class DockerRuntime implements ContainerRuntime {
@@ -27,6 +28,7 @@ export class DockerRuntime implements ContainerRuntime {
     }
     args.push(options.context);
 
+    log.debug(`docker ${args.join(" ")}`);
     const result = await this.run(args);
     if (result.exitCode !== 0) {
       throw new Error(`docker build failed: ${result.stderr}`);
@@ -35,7 +37,9 @@ export class DockerRuntime implements ContainerRuntime {
   }
 
   async imageExists(tag: string): Promise<boolean> {
+    log.debug(`docker image inspect ${tag}`);
     const result = await this.run(["image", "inspect", tag]);
+    log.debug(`  imageExists(${tag}) → ${result.exitCode === 0}`);
     return result.exitCode === 0;
   }
 
@@ -65,10 +69,13 @@ export class DockerRuntime implements ContainerRuntime {
     args.push(options.image);
     args.push(...(options.entrypoint ?? ["sleep", "infinity"]));
 
+    log.debug(`docker ${args.join(" ")}`);
     const result = await this.run(args);
     if (result.exitCode !== 0) {
+      log.debug(`docker run stderr: ${result.stderr}`);
       throw new Error(`docker run failed: ${result.stderr}`);
     }
+    log.debug(`Container created: ${name}`);
     return name;
   }
 
@@ -89,7 +96,14 @@ export class DockerRuntime implements ContainerRuntime {
     }
     args.push(container, ...command);
 
-    return await this.run(args);
+    log.debug(`docker ${args.join(" ")}`);
+    const result = await this.run(args);
+    if (result.exitCode !== 0) {
+      log.debug(`  exit=${result.exitCode} stdout=${result.stdout.trimEnd()} stderr=${result.stderr.trimEnd()}`);
+    } else {
+      log.debug(`  exit=0`);
+    }
+    return result;
   }
 
   async execStream(
@@ -112,6 +126,7 @@ export class DockerRuntime implements ContainerRuntime {
     }
     args.push(container, ...command);
 
+    log.debug(`docker ${args.join(" ")} (streaming)`);
     const cmd = new Deno.Command("docker", {
       args,
       stdout: "piped",
@@ -138,6 +153,7 @@ export class DockerRuntime implements ContainerRuntime {
     ]);
 
     const status = await child.status;
+    log.debug(`execStream exit=${status.code}`);
     return status.code;
   }
 
@@ -164,6 +180,7 @@ export class DockerRuntime implements ContainerRuntime {
       "iptables -A OUTPUT -j DROP",
     ];
 
+    log.debug(`Restricting network for ${container}: ${allowedIPs.join(", ")}`);
     const result = await this.exec(container, [
       "sh",
       "-c",
@@ -179,12 +196,14 @@ export class DockerRuntime implements ContainerRuntime {
     hostPath: string,
     containerPath: string,
   ): Promise<void> {
+    log.debug(`docker cp ${hostPath} → ${container}:${containerPath}`);
     const result = await this.run([
       "cp",
       hostPath,
       `${container}:${containerPath}`,
     ]);
     if (result.exitCode !== 0) {
+      log.debug(`docker cp (in) stderr: ${result.stderr}`);
       throw new Error(`docker cp (in) failed: ${result.stderr}`);
     }
   }
@@ -194,12 +213,14 @@ export class DockerRuntime implements ContainerRuntime {
     containerPath: string,
     hostPath: string,
   ): Promise<void> {
+    log.debug(`docker cp ${container}:${containerPath} → ${hostPath}`);
     const result = await this.run([
       "cp",
       `${container}:${containerPath}`,
       hostPath,
     ]);
     if (result.exitCode !== 0) {
+      log.debug(`docker cp (out) stderr: ${result.stderr}`);
       throw new Error(`docker cp (out) failed: ${result.stderr}`);
     }
   }
@@ -211,6 +232,7 @@ export class DockerRuntime implements ContainerRuntime {
     }
     args.push(options.container, options.tag);
 
+    log.debug(`docker ${args.join(" ")}`);
     const result = await this.run(args);
     if (result.exitCode !== 0) {
       throw new Error(`docker commit failed: ${result.stderr}`);
@@ -219,6 +241,7 @@ export class DockerRuntime implements ContainerRuntime {
   }
 
   async stop(container: ContainerId): Promise<void> {
+    log.debug(`docker stop ${container}`);
     const result = await this.run(["stop", "-t", "5", container]);
     if (result.exitCode !== 0) {
       throw new Error(`docker stop failed: ${result.stderr}`);
@@ -226,6 +249,7 @@ export class DockerRuntime implements ContainerRuntime {
   }
 
   async remove(container: ContainerId): Promise<void> {
+    log.debug(`docker rm -f ${container}`);
     const result = await this.run(["rm", "-f", container]);
     if (result.exitCode !== 0) {
       throw new Error(`docker rm failed: ${result.stderr}`);

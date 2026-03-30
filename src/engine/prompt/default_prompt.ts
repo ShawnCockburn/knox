@@ -29,8 +29,11 @@ Append a structured update to \`knox-progress.txt\` with the following format:
 - **Blockers**: [any issues encountered]
 - **Next steps**: [what the next loop should focus on]
 \`\`\`
+`;
 
-## Phase 7: SIGNAL
+/** Sentinel instruction appended to every prompt (default and custom). */
+export const SENTINEL_INSTRUCTION =
+  `## COMPLETION SIGNAL
 If the task is fully and genuinely complete — all requirements met, code working, tests passing (if applicable) — output the completion signal below on its own line. Only signal completion if the work is truly done. Do not signal completion just to escape the loop.
 
 KNOX_COMPLETE

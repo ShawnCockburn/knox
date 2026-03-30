@@ -6,6 +6,11 @@ set -euo pipefail
 
 VERSION="${1:?Usage: install.sh <version>}"
 
+# Normalize: append .0 if only major.minor (e.g. 1.22 → 1.22.0)
+if [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+$ ]]; then
+  VERSION="${VERSION}.0"
+fi
+
 # Skip if already installed at the requested version
 if command -v go &>/dev/null; then
   CURRENT=$(go version 2>/dev/null | awk '{print $3}' | sed 's/go//')

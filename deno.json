@@ -12,7 +12,7 @@
     "fmt": "deno fmt",
     "check": "deno check src/mod.ts src/cli/cli.ts",
     "compile": "deno compile --allow-run --allow-read --allow-write --allow-env --allow-net --output knox src/cli/cli.ts",
-    "install": "deno install --global --allow-run --allow-read --allow-write --allow-env --allow-net --config deno.json --name knox src/cli/cli.ts"
+    "install": "deno install --global --allow-run --allow-read --allow-write --allow-env --allow-net --config deno.json --name knox src/cli/cli.ts -f"
   },
   "imports": {
     "@std/assert": "jsr:@std/assert@1",

@@ -97,12 +97,20 @@ export class Knox {
 
     const emit = (event: KnoxEvent) => onEvent?.(event);
 
+    log.debug(`[knox] Starting run ${runId}: image=${image} model=${model} maxLoops=${maxLoops}`);
+    log.debug(`[knox] dir=${dir} runDir=${runDir}`);
+    log.debug(`[knox] envVars: ${envVars.map((e) => e.split("=")[0]).join(", ")}`);
+    log.debug(`[knox] allowedIPs: ${allowedIPs.join(", ")}`);
+    log.debug(`[knox] task: ${task.slice(0, 200)}`);
+
     // Create run temp directory
     await Deno.mkdir(runDir, { recursive: true });
 
     const sourceProvider = this.options.sourceProvider ??
       new GitSourceProvider(dir);
     const resultSink = this.options.resultSink ?? new GitBranchSink(dir);
+    log.debug(`[knox] Source provider: ${sourceProvider.constructor.name}`);
+    log.debug(`[knox] Result sink: ${resultSink.constructor.name}`);
 
     let session: ContainerSession | undefined;
     let onAbort: (() => void) | undefined;
@@ -152,6 +160,7 @@ export class Knox {
       if (signal?.aborted) return makeAbortResult();
 
       // Create sandboxed container session
+      log.debug(`[knox] Creating container session...`);
       try {
         session = await ContainerSession.create({
           runtime: this.runtime,
@@ -164,6 +173,7 @@ export class Knox {
           cpuLimit,
           memoryLimit,
         });
+        log.debug(`[knox] Container session created: ${session.containerId}`);
         emit({ type: "container:created", containerId: session.containerId });
 
         // Register abort listener to kill container immediately
@@ -172,6 +182,7 @@ export class Knox {
         };
         signal?.addEventListener("abort", onAbort);
       } catch (e) {
+        log.debug(`[knox] Container creation failed: ${e instanceof Error ? e.message : e}`);
         if (signal?.aborted) return makeAbortResult();
         return {
           ok: false,
@@ -185,6 +196,7 @@ export class Knox {
       if (signal?.aborted) return makeAbortResult();
 
       // Run the agent loop
+      log.debug(`[knox] Starting agent loop phase...`);
       let agentResult: {
         completed: boolean;
         loopsRun: number;
@@ -204,7 +216,10 @@ export class Knox {
           signal,
         });
         agentResult = await agentRunner.run();
+        log.debug(`[knox] Agent loop finished: completed=${agentResult.completed} loops=${agentResult.loopsRun} autoCommitted=${agentResult.autoCommitted}`);
       } catch (e) {
+        log.debug(`[knox] Agent loop failed: ${e instanceof Error ? e.message : e}`);
+        if (e instanceof Error && e.stack) log.debug(`[knox] Stack: ${e.stack}`);
         if (signal?.aborted) return makeAbortResult();
         return {
           ok: false,
@@ -222,12 +237,15 @@ export class Knox {
       if (signal?.aborted) return makeAbortResult();
 
       // Create git bundle and copy to host
+      log.debug(`[knox] Starting bundle phase...`);
       let bundlePath: string;
       try {
         log.info(`Creating git bundle...`);
         bundlePath = await session.extractBundle();
+        log.debug(`[knox] Bundle extracted: ${bundlePath}`);
         emit({ type: "bundle:extracted", path: bundlePath });
       } catch (e) {
+        log.debug(`[knox] Bundle failed: ${e instanceof Error ? e.message : e}`);
         if (signal?.aborted) return makeAbortResult();
         return {
           ok: false,
@@ -241,10 +259,12 @@ export class Knox {
       if (signal?.aborted) return makeAbortResult();
 
       // Collect result via sink
+      log.debug(`[knox] Starting sink phase...`);
       let sinkResult: SinkResult;
       try {
         log.info(`Extracting results...`);
         const slug = taskSlug(task);
+        log.debug(`[knox] Task slug: ${slug}`);
         sinkResult = await resultSink.collect({
           runId,
           bundlePath,
@@ -253,8 +273,11 @@ export class Knox {
           autoCommitted: agentResult.autoCommitted,
           branchName: this.options.branchName,
         });
+        log.debug(`[knox] Sink collected: strategy=${sinkResult.strategy}`);
         await resultSink.cleanup(runId);
+        log.debug(`[knox] Sink cleanup done`);
       } catch (e) {
+        log.debug(`[knox] Sink failed: ${e instanceof Error ? e.message : e}`);
         if (signal?.aborted) return makeAbortResult();
         return {
           ok: false,

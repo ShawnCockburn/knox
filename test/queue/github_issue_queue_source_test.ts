@@ -406,6 +406,69 @@ Task body`,
   });
 });
 
+Deno.test("GitHubIssueQueueSource — resolves #N shorthand in dependsOn", async () => {
+  await withTempState(async (statePath) => {
+    const issues = [
+      makeIssue({
+        number: 1,
+        title: "Foundation",
+        body: "Build the base",
+      }),
+      makeIssue({
+        number: 2,
+        title: "Depends on foundation",
+        body: `---
+dependsOn:
+  - "#1"
+---
+Build on top`,
+      }),
+    ];
+
+    const { runner } = issueRunner(issues);
+    const source = new GitHubIssueQueueSource({
+      cwd: "/repo",
+      statePath,
+      runner,
+    });
+
+    const result = await source.load();
+    assertEquals(result.ok, true);
+    if (result.ok) {
+      assertEquals(result.manifest.items[1].dependsOn, ["gh-1-foundation"]);
+    }
+  });
+});
+
+Deno.test("GitHubIssueQueueSource — unresolvable #N ref still fails validation", async () => {
+  await withTempState(async (statePath) => {
+    const issues = [
+      makeIssue({
+        number: 1,
+        title: "Depends on missing",
+        body: `---
+dependsOn:
+  - "#99"
+---
+Task body`,
+      }),
+    ];
+
+    const { runner } = issueRunner(issues);
+    const source = new GitHubIssueQueueSource({
+      cwd: "/repo",
+      statePath,
+      runner,
+    });
+
+    const result = await source.load();
+    assertEquals(result.ok, false);
+    if (!result.ok) {
+      assertStringIncludes(result.errors[0].message, "#99");
+    }
+  });
+});
+
 Deno.test("GitHubIssueQueueSource — validates dependency graph (broken refs)", async () => {
   await withTempState(async (statePath) => {
     const issues = [
