@@ -35,6 +35,16 @@
 | **Completion Signal** | The sentinel string `KNOX_COMPLETE` output by the Agent to indicate the Task is finished         | Done marker, exit signal                     |
 | **Progress File**     | The persistent file `knox-progress.txt` inside the Container that carries context across Loops   | State file, log file, memory file            |
 
+## Agent Provider (new)
+
+| Term                                 | Definition                                                                                                                                                   | Aliases to avoid                                            |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| **Agent Provider** (new)             | Interface that each agent implementation must satisfy; owns invocation, prompt building, and completion detection for a specific agent binary                | Provider (too generic), agent adapter                       |
+| **Container Handle** (new)           | Narrow container surface (`exec`, `execStream`, `copyIn`) passed to Agent Providers via Agent Context; a subset of Container Session's full interface        | Container (when referring to this interface), session proxy |
+| **Agent Context** (new)              | Per-invocation context passed from the Agent Runner to the Agent Provider: container handle, task, loop number, max loops, and optional overrides            | Invoke context, loop context                                |
+| **Invoke Result** (new)              | Return type from an Agent Provider invocation, containing `completed` (boolean) and `exitCode` (number)                                                      | Agent result, loop result                                   |
+| **Claude Code Agent Provider** (new) | Agent Provider implementation for Claude Code; owns the Claude CLI path, sentinel detection, prompt building via PromptBuilder, and progress/git-log reading | Claude provider, CC provider                                |
+
 ## Run Identity
 
 | Term              | Definition                                                                                                                                             | Aliases to avoid      |
@@ -64,10 +74,10 @@
 
 ## Commit Recovery
 
-| Term             | Definition                                                                                                                                                            | Aliases to avoid               |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| **Commit Nudge** | A lightweight, single-purpose Claude invocation that instructs the Agent to review its diff and commit with a meaningful message, without making further code changes | Commit reminder, commit retry  |
-| **Auto-Commit**  | A mechanical `git add -A && git commit` performed by Knox as a last resort when the Agent fails to commit after a Commit Nudge                                        | Fallback commit, safety commit |
+| Term                       | Definition                                                                                                                                                                            | Aliases to avoid               |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| **Commit Nudge** (updated) | A regular `invoke()` call through the Agent Provider with a commit instruction as the task; the Agent Runner checks for a dirty tree via the Container Handle, not a dedicated method | Commit reminder, commit retry  |
+| **Auto-Commit**            | A mechanical `git add -A && git commit` performed by Knox as a last resort when the Agent fails to commit after a Commit Nudge                                                        | Fallback commit, safety commit |
 
 ## Two-Phase Execution
 
@@ -94,14 +104,14 @@
 
 ## Single-Run Orchestration
 
-| Term                  | Definition                                                                                                                                                                                       | Aliases to avoid                                 |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
-| **Knox**              | The single-run engine that coordinates a Container Session, Agent Runner, bundle extraction, and result sinking for one Task                                                                     | Runner, executor (when meaning the whole system) |
-| **Knox Outcome**      | A discriminated union result from a Knox engine run: `{ ok: true, result }` or `{ ok: false, error, phase }`                                                                                     | Result (ambiguous with KnoxResult)               |
-| **Preflight Check**   | A validation run before execution: Docker available, Credentials present, source directory exists, dirty working tree warning                                                                    | Pre-check, startup validation                    |
-| **Container Session** | A deep module that owns the entire lifecycle of a sandboxed Container: creation, workspace setup, command execution, result extraction, and cleanup                                              | Session, sandbox context                         |
-| **Agent Runner**      | A deep module that owns Agent execution as a coherent operation: running Loops, detecting the Completion Signal, verifying Check Commands, and performing Commit Nudge with Auto-Commit fallback | Loop executor, agent loop                        |
-| **Image Manager**     | The module that builds the Base Image, installs Features, runs Prepare Commands, and caches the resulting images                                                                                 | Builder, image builder                           |
+| Term                       | Definition                                                                                                                                                                                                                      | Aliases to avoid                                 |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| **Knox**                   | The single-run engine that coordinates a Container Session, Agent Runner, bundle extraction, and result sinking for one Task                                                                                                    | Runner, executor (when meaning the whole system) |
+| **Knox Outcome**           | A discriminated union result from a Knox engine run: `{ ok: true, result }` or `{ ok: false, error, phase }`                                                                                                                    | Result (ambiguous with KnoxResult)               |
+| **Preflight Check**        | A validation run before execution: Docker available, Credentials present, source directory exists, dirty working tree warning                                                                                                   | Pre-check, startup validation                    |
+| **Container Session**      | A deep module that owns the entire lifecycle of a sandboxed Container: creation, workspace setup, command execution, result extraction, and cleanup                                                                             | Session, sandbox context                         |
+| **Agent Runner** (updated) | A provider-agnostic loop orchestrator that accepts an Agent Provider and Container Handle; owns retry/backoff, Check Command verification, and Commit Nudge — delegates per-loop execution to the Agent Provider via `invoke()` | Loop executor, agent loop                        |
+| **Image Manager**          | The module that builds the Base Image, installs Features, runs Prepare Commands, and caches the resulting images                                                                                                                | Builder, image builder                           |
 
 ## Queue Orchestration
 
@@ -201,10 +211,20 @@
 - A **Container Session** hides all container plumbing: creation, source copy,
   ownership, network restriction, git verification, exclude setup, bundle
   extraction, and cleanup
-- An **Agent Runner** takes a **Container Session** and produces an
-  **AgentRunResult** (completed, loopsRun, autoCommitted)
-- An **Agent Runner** never touches container plumbing — it only calls `exec()`,
-  `execStream()`, and `hasDirtyTree()` on the **Container Session**
+- An **Agent Runner** takes an **Agent Provider** and a **Container Handle** and
+  produces an **AgentRunnerResult** (completed, loopsRun, autoCommitted)
+  (updated)
+- An **Agent Runner** is provider-agnostic — it delegates per-loop execution to
+  the **Agent Provider** via `invoke()` and uses the **Container Handle** only
+  for Check Commands, dirty-tree checks, and Auto-Commit (updated)
+- A **Container Session** exposes a **Container Handle** via
+  `toContainerHandle()` — a narrow adapter over its `exec`, `execStream`, and
+  `copyIn` methods (new)
+- The **Knox** engine constructs a **Claude Code Agent Provider** and a
+  **Container Handle**, then passes both to the **Agent Runner** (new)
+- A **Claude Code Agent Provider** owns all Claude-specific concerns:
+  PromptBuilder, sentinel detection (`KNOX_COMPLETE`), CLI flags, progress file
+  reading, and git log reading (new)
 - A **Task** produces one or more **Loops**, up to **Max Loops**
 - Each **Loop** is a fresh Claude Code invocation; the **Progress File** carries
   context between them
@@ -213,8 +233,9 @@
 - A **Check Failure** causes the next **Loop** to receive the failure output as
   additional context
 - After loops complete, the **Agent Runner** checks for uncommitted work via
-  **Container Session**'s `hasDirtyTree()`, issues a **Commit Nudge**, and falls
-  back to **Auto-Commit** if needed
+  `exec(["git", "status", "--porcelain"])` on the **Container Handle**, issues a
+  **Commit Nudge** via `invoke()`, and falls back to **Auto-Commit** if needed
+  (updated)
 - A **Git Bundle** is created inside the **Container** via **Container
   Session**'s `extractBundle()` and extracted to the **Run Directory**
 - A **Result Sink** receives the **Git Bundle** and **Source Metadata**,
@@ -493,6 +514,20 @@
   the **agent/knox Label** (user-managed, Knox read-only) and **Knox Labels**
   (Knox-managed, auto-created). Do not call all of them "Knox labels" — the
   **agent/knox Label** is explicitly outside Knox's write domain.
+- **"provider"** (new): The codebase now has four "provider" types: **Agent
+  Provider** (agent binary abstraction), **Source Provider** (git cloning),
+  **Credential Provider** (auth), and **Feature Provider** (in Feature
+  Registry). Never use "provider" unqualified — always say the full term.
+- **"handle" vs "session"** (new): A **Container Handle** is a narrow,
+  provider-facing interface (`exec`, `execStream`, `copyIn`). A **Container
+  Session** is the full lifecycle manager (creation, network restriction, bundle
+  extraction, disposal). The handle is a subset exposed via
+  `toContainerHandle()`. Do not use "session" when you mean the handle, or vice
+  versa.
+- **"invoke" vs "run"** (new): `invoke()` is a single Agent Provider call (one
+  loop iteration or one nudge). `run()` is the Agent Runner's outer loop across
+  all iterations. Do not say "invoke" when describing the full multi-loop
+  execution.
 - **"item ID" vs "issue number"** (new): A GitHub Issue has both a number
   (`#42`) and an **Item ID** (`gh-42-add-oauth-support`). The number is GitHub's
   identifier; the **Item ID** is Knox's. Use "issue number" for GitHub-facing

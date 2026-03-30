@@ -1,20 +1,15 @@
-import type { ContainerSession } from "../session/container_session.ts";
-import { PromptBuilder } from "../prompt/prompt_builder.ts";
+import type { AgentProvider, ContainerHandle } from "./agent_provider.ts";
 import { log } from "../../shared/log.ts";
 import type { KnoxEvent } from "../../shared/types.ts";
 
-const SENTINEL = "KNOX_COMPLETE";
-const PROMPT_PATH = "/workspace/.knox/prompt.txt";
-const PROGRESS_FILE = "knox-progress.txt";
 const MAX_RETRIES = 3;
-const CLAUDE_BIN = "/opt/claude/bin/claude";
 
-const COMMIT_NUDGE_PROMPT =
+const COMMIT_NUDGE_TASK =
   `You have uncommitted changes in the workspace. Review \`git diff\` and \`git status\`, then commit all changes with a meaningful conventional commit message (e.g., feat:, fix:, refactor:). Do NOT make any further code changes — only commit.`;
 
 export interface AgentRunnerOptions {
-  session: ContainerSession;
-  model: string;
+  provider: AgentProvider;
+  container: ContainerHandle;
   task: string;
   maxLoops: number;
   checkCommand?: string;
@@ -31,14 +26,14 @@ export interface AgentRunnerResult {
 }
 
 export class AgentRunner {
-  private session: ContainerSession;
-  private promptBuilder: PromptBuilder;
+  private provider: AgentProvider;
+  private container: ContainerHandle;
   private options: AgentRunnerOptions;
 
   constructor(options: AgentRunnerOptions) {
     this.options = options;
-    this.session = options.session;
-    this.promptBuilder = new PromptBuilder();
+    this.provider = options.provider;
+    this.container = options.container;
   }
 
   async run(): Promise<AgentRunnerResult> {
@@ -47,7 +42,7 @@ export class AgentRunner {
     let loopsRun = this.options.maxLoops;
 
     log.debug(
-      `[agent] Starting agent run: model=${this.options.model} maxLoops=${this.options.maxLoops}`,
+      `[agent] Starting agent run: maxLoops=${this.options.maxLoops}`,
     );
     log.debug(`[agent] Task: ${this.options.task.slice(0, 200)}...`);
 
@@ -85,7 +80,7 @@ export class AgentRunner {
           log.debug(
             `[agent] Running post-loop check: ${this.options.checkCommand}`,
           );
-          const checkResult = await this.session.exec(
+          const checkResult = await this.container.exec(
             ["sh", "-c", this.options.checkCommand],
           );
 
@@ -126,37 +121,39 @@ export class AgentRunner {
     return { completed, loopsRun, autoCommitted };
   }
 
+  private async hasDirtyTree(): Promise<boolean> {
+    const result = await this.container.exec([
+      "git",
+      "status",
+      "--porcelain",
+    ]);
+    return result.stdout.trim().length > 0;
+  }
+
   private async commitNudge(): Promise<boolean> {
-    if (!(await this.session.hasDirtyTree())) {
+    if (!(await this.hasDirtyTree())) {
       log.debug(`[agent] No dirty tree, skipping nudge`);
       return false;
     }
 
     log.info(`Agent left uncommitted changes. Nudging to commit...`);
     try {
-      const nudgeCmd = `echo '${
-        COMMIT_NUDGE_PROMPT.replace(/'/g, "'\\''")
-      }' | ${CLAUDE_BIN} -p --dangerously-skip-permissions --model ${this.options.model}`;
-      log.debug(`[agent] Nudge command: ${nudgeCmd}`);
-      const exitCode = await this.session.execStream(
-        ["sh", "-c", nudgeCmd],
-        {
-          onLine: (line, stream) => {
-            if (stream === "stdout") this.options.onLine?.(line);
-            else log.debug(`[agent:nudge:stderr] ${line}`);
-          },
-        },
-      );
-      log.debug(`[agent] Nudge exit code: ${exitCode}`);
+      await this.provider.invoke({
+        container: this.container,
+        task: COMMIT_NUDGE_TASK,
+        loopNumber: 0,
+        maxLoops: 0,
+        onLine: this.options.onLine,
+      });
     } catch (e) {
       log.debug(`[agent] Nudge failed: ${e instanceof Error ? e.message : e}`);
       // Nudge failed — fall through to mechanical auto-commit
     }
 
     // Check if still dirty after nudge
-    if (await this.session.hasDirtyTree()) {
+    if (await this.hasDirtyTree()) {
       log.info(`Nudge did not produce a commit. Auto-committing...`);
-      const commitResult = await this.session.exec([
+      const commitResult = await this.container.exec([
         "sh",
         "-c",
         `git add -A && git commit -m "knox: auto-commit uncommitted agent work"`,
@@ -183,7 +180,15 @@ export class AgentRunner {
             `[agent] Loop ${loopNumber} retry attempt ${attempt}/${MAX_RETRIES}`,
           );
         }
-        const result = await this.runOneLoop(loopNumber, checkFailure);
+        const result = await this.provider.invoke({
+          container: this.container,
+          task: this.options.task,
+          loopNumber,
+          maxLoops: this.options.maxLoops,
+          checkFailure,
+          customPrompt: this.options.customPrompt,
+          onLine: this.options.onLine,
+        });
 
         if (result.exitCode !== 0 && attempt < MAX_RETRIES) {
           log.debug(
@@ -216,133 +221,6 @@ export class AgentRunner {
     }
 
     throw lastError ?? new Error("Loop execution failed after retries");
-  }
-
-  private async runOneLoop(
-    loopNumber: number,
-    checkFailure?: string,
-  ): Promise<{ completed: boolean; exitCode: number }> {
-    // Gather context
-    log.debug(`[agent] Loop ${loopNumber}: reading progress file...`);
-    const progressFileContent = await this.readProgressFile();
-    log.debug(
-      `[agent] Loop ${loopNumber}: progress file ${
-        progressFileContent
-          ? `found (${progressFileContent.length} bytes)`
-          : "not found"
-      }`,
-    );
-
-    log.debug(`[agent] Loop ${loopNumber}: reading git log...`);
-    const gitLog = await this.readGitLog();
-    log.debug(
-      `[agent] Loop ${loopNumber}: git log ${
-        gitLog ? `found (${gitLog.length} bytes)` : "empty"
-      }`,
-    );
-
-    // Build prompt
-    log.debug(`[agent] Loop ${loopNumber}: building prompt...`);
-    const prompt = this.promptBuilder.build({
-      task: this.options.task,
-      loopNumber,
-      maxLoops: this.options.maxLoops,
-      progressFileContent,
-      gitLog,
-      checkFailure,
-      customPrompt: this.options.customPrompt,
-    });
-    log.debug(
-      `[agent] Loop ${loopNumber}: prompt built (${prompt.length} bytes)`,
-    );
-
-    // Write prompt to container (mkdir and chown as root since docker cp creates root-owned files)
-    log.debug(`[agent] Loop ${loopNumber}: writing prompt to container...`);
-    await this.session.exec(
-      ["mkdir", "-p", "/workspace/.knox"],
-      { user: "root" },
-    );
-    await this.writePromptToContainer(PROMPT_PATH, prompt);
-    await this.session.exec(
-      ["chown", "-R", "knox:knox", "/workspace/.knox"],
-      { user: "root" },
-    );
-    log.debug(`[agent] Loop ${loopNumber}: prompt written to ${PROMPT_PATH}`);
-
-    // Run claude
-    let completed = false;
-    const stderrLines: string[] = [];
-    const claudeCmd =
-      `${CLAUDE_BIN} -p --dangerously-skip-permissions --model ${this.options.model} < ${PROMPT_PATH}`;
-    log.debug(`[agent] Loop ${loopNumber}: executing claude: ${claudeCmd}`);
-    const exitCode = await this.session.execStream(
-      ["sh", "-c", claudeCmd],
-      {
-        onLine: (line, stream) => {
-          if (stream === "stdout") {
-            if (line.includes(SENTINEL)) {
-              completed = true;
-            }
-            this.options.onLine?.(line);
-          } else {
-            stderrLines.push(line);
-            this.options.onLine?.(`[stderr] ${line}`);
-          }
-        },
-      },
-    );
-
-    log.debug(
-      `[agent] Loop ${loopNumber}: claude exited with code ${exitCode}, completed=${completed}`,
-    );
-    if (exitCode !== 0) {
-      log.debug(
-        `[agent] Loop ${loopNumber}: stderr line count: ${stderrLines.length}`,
-      );
-      if (stderrLines.length > 0) {
-        log.debug(
-          `[agent] Loop ${loopNumber}: stderr (last 30 lines):\n${
-            stderrLines.slice(-30).join("\n")
-          }`,
-        );
-      }
-    }
-
-    return { completed, exitCode };
-  }
-
-  private async readProgressFile(): Promise<string | undefined> {
-    const result = await this.session.exec([
-      "cat",
-      PROGRESS_FILE,
-    ]);
-    if (result.exitCode !== 0) return undefined;
-    return result.stdout || undefined;
-  }
-
-  private async readGitLog(): Promise<string | undefined> {
-    const result = await this.session.exec(
-      ["git", "log", "--oneline"],
-    );
-    if (result.exitCode !== 0) return undefined;
-    return result.stdout || undefined;
-  }
-
-  private async writePromptToContainer(
-    containerPath: string,
-    content: string,
-  ): Promise<void> {
-    // Write to a temp file on host, then copy via session
-    const tmpFile = await Deno.makeTempFile({ suffix: ".txt" });
-    try {
-      await Deno.writeTextFile(tmpFile, content);
-      log.debug(`[agent] Copying prompt from ${tmpFile} → ${containerPath}`);
-      // Use the session's containerId for the low-level copyIn
-      // This is a necessary coupling since copyIn is a runtime-level operation
-      await this.session.copyIn(tmpFile, containerPath);
-    } finally {
-      await Deno.remove(tmpFile).catch(() => {});
-    }
   }
 }
 

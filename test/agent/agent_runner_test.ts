@@ -1,313 +1,207 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { MockRuntime } from "../runtime/mock_runtime.ts";
-import { ContainerSession } from "../../src/engine/session/container_session.ts";
+import { assert, assertEquals } from "@std/assert";
 import { AgentRunner } from "../../src/engine/agent/agent_runner.ts";
-import type { SourceProvider } from "../../src/engine/source/source_provider.ts";
-import { SourceStrategy } from "../../src/engine/source/source_provider.ts";
-import type { PrepareResult } from "../../src/engine/source/source_provider.ts";
+import type {
+  AgentContext,
+  AgentProvider,
+  ContainerHandle,
+  InvokeResult,
+} from "../../src/engine/agent/agent_provider.ts";
+import type { ExecResult } from "../../src/shared/types.ts";
+import type { ExecOptions } from "../../src/shared/runtime/container_runtime.ts";
 
-class MockSourceProvider implements SourceProvider {
-  prepare(_runId: string): Promise<PrepareResult> {
-    return Promise.resolve({
-      hostPath: "/tmp/mock-source",
-      metadata: {
-        strategy: SourceStrategy.HostGit,
-        baseCommit: "abc123",
-        repoPath: "/mock/repo",
-      },
-    });
+// ---------------------------------------------------------------------------
+// Mock AgentProvider
+// ---------------------------------------------------------------------------
+
+class MockAgentProvider implements AgentProvider {
+  invocations: AgentContext[] = [];
+  results: InvokeResult[] = [];
+  private resultIndex = 0;
+
+  async invoke(ctx: AgentContext): Promise<InvokeResult> {
+    this.invocations.push(ctx);
+    const result = this.results[this.resultIndex] ?? {
+      completed: false,
+      exitCode: 0,
+    };
+    if (this.resultIndex < this.results.length - 1) {
+      this.resultIndex++;
+    }
+    // Simulate streaming output so onLine can fire if needed
+    await Promise.resolve();
+    return result;
   }
-  cleanup(_runId: string): Promise<void> {
+}
+
+// ---------------------------------------------------------------------------
+// Mock ContainerHandle
+// ---------------------------------------------------------------------------
+
+interface MockExecCall {
+  command: string[];
+  options?: ExecOptions;
+}
+
+class MockContainerHandle implements ContainerHandle {
+  execCalls: MockExecCall[] = [];
+  execResults: ExecResult[] = [];
+  private execIndex = 0;
+
+  execHandler?: (
+    command: string[],
+    options?: ExecOptions,
+  ) => Promise<ExecResult>;
+
+  exec(command: string[], options?: ExecOptions): Promise<ExecResult> {
+    this.execCalls.push({ command, options });
+    if (this.execHandler) return this.execHandler(command, options);
+    const result = this.execResults[this.execIndex] ?? {
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    };
+    if (this.execIndex < this.execResults.length - 1) {
+      this.execIndex++;
+    }
+    return Promise.resolve(result);
+  }
+
+  execStream(): Promise<number> {
+    return Promise.resolve(0);
+  }
+
+  copyIn(): Promise<void> {
     return Promise.resolve();
   }
 }
 
-async function createSession(runtime: MockRuntime): Promise<ContainerSession> {
-  runtime.execResults = [
-    { exitCode: 0, stdout: "", stderr: "" }, // chown
-    { exitCode: 0, stdout: ".git", stderr: "" }, // git rev-parse
-    { exitCode: 0, stdout: "", stderr: "" }, // exclude printf
-  ];
-  const session = await ContainerSession.create({
-    runtime,
-    runId: "test1234",
-    runDir: "/tmp/knox-test1234",
-    image: "knox-agent:latest",
-    envVars: ["ANTHROPIC_API_KEY=test-key"],
-    allowedIPs: ["1.2.3.4"],
-    sourceProvider: new MockSourceProvider(),
-  });
-  // Reset calls so tests only see AgentRunner calls
-  runtime.calls = [];
-  return session;
-}
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function createRunner(
-  session: ContainerSession,
+  provider: MockAgentProvider,
+  container: MockContainerHandle,
   overrides: Partial<{
     maxLoops: number;
     checkCommand: string;
     customPrompt: string;
     onLine: (line: string) => void;
+    signal: AbortSignal;
   }> = {},
 ): AgentRunner {
   return new AgentRunner({
-    session,
-    model: "sonnet",
+    provider,
+    container,
     task: "Write tests",
     maxLoops: overrides.maxLoops ?? 3,
     checkCommand: overrides.checkCommand,
     customPrompt: overrides.customPrompt,
     onLine: overrides.onLine,
+    signal: overrides.signal,
   });
 }
 
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
 Deno.test("AgentRunner", async (t) => {
-  await t.step("detects KNOX_COMPLETE and stops", async () => {
-    const runtime = new MockRuntime();
-    const session = await createSession(runtime);
+  await t.step("stops when provider returns completed: true", async () => {
+    const provider = new MockAgentProvider();
+    const container = new MockContainerHandle();
 
-    runtime.execResults = [
-      // mkdir
-      { exitCode: 0, stdout: "", stderr: "" },
-      // chown .knox
-      { exitCode: 0, stdout: "", stderr: "" },
-      // cat knox-progress.txt (not found)
-      { exitCode: 1, stdout: "", stderr: "" },
-      // git log (no commits)
-      { exitCode: 1, stdout: "", stderr: "" },
-      // hasDirtyTree (clean) — last result, MockRuntime sticks here
-    ];
-    runtime.execStreamLines = [
-      { line: "Working on it...", stream: "stdout" },
-      { line: "KNOX_COMPLETE", stream: "stdout" },
-    ];
+    provider.results = [{ completed: true, exitCode: 0 }];
+    // hasDirtyTree → clean
+    container.execResults = [{ exitCode: 0, stdout: "", stderr: "" }];
 
-    const runner = createRunner(session);
+    const runner = createRunner(provider, container);
     const result = await runner.run();
 
     assertEquals(result.completed, true);
     assertEquals(result.loopsRun, 1);
     assertEquals(result.autoCommitted, false);
-
-    await session.dispose();
-  });
-
-  await t.step("runs up to maxLoops when no completion", async () => {
-    const runtime = new MockRuntime();
-    const session = await createSession(runtime);
-
-    runtime.execResults = [
-      { exitCode: 0, stdout: "", stderr: "" },
-      { exitCode: 0, stdout: "", stderr: "" },
-      { exitCode: 1, stdout: "", stderr: "" },
-      { exitCode: 1, stdout: "", stderr: "" },
-      // hasDirtyTree (clean) — last result
-    ];
-    runtime.execStreamLines = [
-      { line: "Still working...", stream: "stdout" },
-    ];
-
-    const runner = createRunner(session, { maxLoops: 2 });
-    const result = await runner.run();
-
-    assertEquals(result.completed, false);
-    assertEquals(result.loopsRun, 2);
-    assertEquals(result.autoCommitted, false);
-
-    await session.dispose();
-  });
-
-  await t.step("streams output via onLine callback", async () => {
-    const runtime = new MockRuntime();
-    const session = await createSession(runtime);
-
-    runtime.execResults = [
-      { exitCode: 0, stdout: "", stderr: "" },
-      { exitCode: 0, stdout: "", stderr: "" },
-      { exitCode: 1, stdout: "", stderr: "" },
-      { exitCode: 1, stdout: "", stderr: "" },
-    ];
-    runtime.execStreamLines = [
-      { line: "line-one", stream: "stdout" },
-      { line: "KNOX_COMPLETE", stream: "stdout" },
-    ];
-
-    const lines: string[] = [];
-    const runner = createRunner(session, {
-      maxLoops: 1,
-      onLine: (line) => lines.push(line),
-    });
-    await runner.run();
-
-    assertEquals(lines, ["line-one", "KNOX_COMPLETE"]);
-
-    await session.dispose();
-  });
-
-  await t.step("reads progress file and git log before each loop", async () => {
-    const runtime = new MockRuntime();
-    const session = await createSession(runtime);
-
-    // Use exec override to control results precisely
-    let execCallCount = 0;
-    runtime.exec = (container, command, options) => {
-      runtime.calls.push({
-        method: "exec",
-        args: [container, command, options],
-      });
-      execCallCount++;
-      // Call 1: mkdir, 2: chown, 3: cat progress, 4: git log, 5: hasDirtyTree
-      if (execCallCount === 3) {
-        return Promise.resolve({
-          exitCode: 0,
-          stdout: "## Loop 1\nDid stuff",
-          stderr: "",
-        });
-      }
-      if (execCallCount === 4) {
-        return Promise.resolve({
-          exitCode: 0,
-          stdout: "abc1234 feat: initial\n",
-          stderr: "",
-        });
-      }
-      return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
-    };
-    runtime.execStreamLines = [
-      { line: "KNOX_COMPLETE", stream: "stdout" },
-    ];
-
-    const runner = createRunner(session, { maxLoops: 1 });
-    await runner.run();
-
-    // Verify copyIn was called (prompt written to container)
-    const copyInCalls = runtime.callsTo("copyIn");
-    assertEquals(copyInCalls.length, 1);
-    // Container path should be the prompt path
-    assertEquals(copyInCalls[0].args[2], "/workspace/.knox/prompt.txt");
-
-    await session.dispose();
-  });
-
-  await t.step("invokes claude with correct flags", async () => {
-    const runtime = new MockRuntime();
-    const session = await createSession(runtime);
-
-    runtime.execResults = [
-      { exitCode: 0, stdout: "", stderr: "" },
-      { exitCode: 0, stdout: "", stderr: "" },
-      { exitCode: 1, stdout: "", stderr: "" },
-      { exitCode: 1, stdout: "", stderr: "" },
-    ];
-    runtime.execStreamLines = [
-      { line: "KNOX_COMPLETE", stream: "stdout" },
-    ];
-
-    const runner = createRunner(session, { maxLoops: 1 });
-    await runner.run();
-
-    const streamCalls = runtime.callsTo("execStream");
-    assertEquals(streamCalls.length, 1);
-    const command = streamCalls[0].args[1] as string[];
-    assertEquals(command[0], "sh");
-    assertEquals(command[1], "-c");
-    assertStringIncludes(command[2] as string, "claude -p");
-    assertStringIncludes(
-      command[2] as string,
-      "--dangerously-skip-permissions",
-    );
-    assertStringIncludes(command[2] as string, "--model sonnet");
-
-    await session.dispose();
-  });
-
-  await t.step("check command: passes when check succeeds", async () => {
-    const runtime = new MockRuntime();
-    const session = await createSession(runtime);
-
-    // Use exec override since we need clean hasDirtyTree at the end
-    let execCallCount = 0;
-    runtime.exec = (container, command, options) => {
-      runtime.calls.push({
-        method: "exec",
-        args: [container, command, options],
-      });
-      execCallCount++;
-      // Calls: 1=mkdir, 2=chown, 3=cat progress, 4=git log, 5=check, 6=hasDirtyTree
-      if (execCallCount === 3 || execCallCount === 4) {
-        return Promise.resolve({ exitCode: 1, stdout: "", stderr: "" });
-      }
-      if (execCallCount === 5) {
-        return Promise.resolve({
-          exitCode: 0,
-          stdout: "All tests passed",
-          stderr: "",
-        });
-      }
-      return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
-    };
-    runtime.execStreamLines = [
-      { line: "KNOX_COMPLETE", stream: "stdout" },
-    ];
-
-    const runner = createRunner(session, {
-      maxLoops: 3,
-      checkCommand: "npm test",
-    });
-    const result = await runner.run();
-
-    assertEquals(result.completed, true);
-    assertEquals(result.loopsRun, 1);
-
-    await session.dispose();
+    assertEquals(provider.invocations.length, 1);
   });
 
   await t.step(
-    "check command: continues looping when check fails",
+    "runs up to maxLoops when provider never completes",
     async () => {
-      const runtime = new MockRuntime();
-      const session = await createSession(runtime);
+      const provider = new MockAgentProvider();
+      const container = new MockContainerHandle();
 
-      let execCallCount = 0;
-      runtime.exec = (container, command, options) => {
-        runtime.calls.push({
-          method: "exec",
-          args: [container, command, options],
-        });
-        execCallCount++;
-        // Call 1: mkdir (loop 1)
-        // Call 2: chown .knox (loop 1)
-        // Call 3: cat progress (loop 1)
-        // Call 4: git log (loop 1)
-        // Call 5: check command — FAILS
-        // Call 6: mkdir (loop 2)
-        // Call 7: chown .knox (loop 2)
-        // Call 8: cat progress (loop 2)
-        // Call 9: git log (loop 2)
-        // Call 10: check command — PASSES
-        // Call 11: hasDirtyTree — clean
-        if (execCallCount === 5) {
+      provider.results = [{ completed: false, exitCode: 0 }];
+      // hasDirtyTree → clean
+      container.execResults = [{ exitCode: 0, stdout: "", stderr: "" }];
+
+      const runner = createRunner(provider, container, { maxLoops: 2 });
+      const result = await runner.run();
+
+      assertEquals(result.completed, false);
+      assertEquals(result.loopsRun, 2);
+      assertEquals(provider.invocations.length, 2);
+    },
+  );
+
+  await t.step(
+    "retries on non-zero exit codes with backoff",
+    async () => {
+      const provider = new MockAgentProvider();
+      const container = new MockContainerHandle();
+
+      // First call: non-zero exit, second call: success with completion
+      provider.results = [
+        { completed: false, exitCode: 1 },
+        { completed: true, exitCode: 0 },
+      ];
+      // hasDirtyTree → clean
+      container.execResults = [{ exitCode: 0, stdout: "", stderr: "" }];
+
+      const runner = createRunner(provider, container, { maxLoops: 1 });
+      const result = await runner.run();
+
+      assertEquals(result.completed, true);
+      // Two invocations: one failed, one retry
+      assertEquals(provider.invocations.length, 2);
+    },
+  );
+
+  await t.step(
+    "runs check command after completion and re-loops on failure",
+    async () => {
+      const provider = new MockAgentProvider();
+      const container = new MockContainerHandle();
+
+      // Both loops return completed
+      provider.results = [{ completed: true, exitCode: 0 }];
+
+      // check command: first fails, second passes
+      let checkCallCount = 0;
+      container.execHandler = (command) => {
+        // git status --porcelain for hasDirtyTree → clean
+        if (command[0] === "git" && command.includes("--porcelain")) {
+          return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+        }
+        // check command (sh -c ...)
+        if (command[0] === "sh" && command[1] === "-c") {
+          checkCallCount++;
+          if (checkCallCount === 1) {
+            return Promise.resolve({
+              exitCode: 1,
+              stdout: "FAIL",
+              stderr: "test failed",
+            });
+          }
           return Promise.resolve({
-            exitCode: 1,
-            stdout: "FAIL",
-            stderr: "test failed",
+            exitCode: 0,
+            stdout: "PASS",
+            stderr: "",
           });
-        }
-        if (execCallCount === 10) {
-          return Promise.resolve({ exitCode: 0, stdout: "PASS", stderr: "" });
-        }
-        if (execCallCount % 5 === 3) {
-          // cat progress — not found
-          return Promise.resolve({ exitCode: 1, stdout: "", stderr: "" });
         }
         return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
       };
-      runtime.execStreamLines = [
-        { line: "KNOX_COMPLETE", stream: "stdout" },
-      ];
 
-      const runner = createRunner(session, {
+      const runner = createRunner(provider, container, {
         maxLoops: 3,
         checkCommand: "npm test",
       });
@@ -315,61 +209,81 @@ Deno.test("AgentRunner", async (t) => {
 
       assertEquals(result.completed, true);
       assertEquals(result.loopsRun, 2);
-
-      await session.dispose();
+      // Provider invoked twice (once per loop)
+      assertEquals(provider.invocations.length, 2);
+      // Second invocation should have checkFailure context
+      assertEquals(
+        provider.invocations[1].checkFailure,
+        "FAILtest failed",
+      );
     },
   );
 
-  // --- Commit nudge tests ---
+  await t.step(
+    "nudge: detects dirty tree, calls invoke with commit instruction, falls back to auto-commit",
+    async () => {
+      const provider = new MockAgentProvider();
+      const container = new MockContainerHandle();
 
-  await t.step("clean tree skips nudge entirely", async () => {
-    const runtime = new MockRuntime();
-    const session = await createSession(runtime);
+      // Loop completes
+      provider.results = [
+        { completed: true, exitCode: 0 },
+        // nudge invocation (provider doesn't commit)
+        { completed: false, exitCode: 0 },
+      ];
 
-    let execCallCount = 0;
-    runtime.exec = (container, command, options) => {
-      runtime.calls.push({
-        method: "exec",
-        args: [container, command, options],
-      });
-      execCallCount++;
-      return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
-    };
-    runtime.execStreamLines = [
-      { line: "KNOX_COMPLETE", stream: "stdout" },
-    ];
+      // Always dirty for git status
+      container.execHandler = (command) => {
+        if (command[0] === "git" && command.includes("--porcelain")) {
+          return Promise.resolve({
+            exitCode: 0,
+            stdout: " M dirty.ts\n",
+            stderr: "",
+          });
+        }
+        return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+      };
 
-    const runner = createRunner(session, { maxLoops: 1 });
-    const result = await runner.run();
+      const runner = createRunner(provider, container);
+      const result = await runner.run();
 
-    assertEquals(result.autoCommitted, false);
-    // Only 1 execStream call (the loop), no nudge execStream
-    const streamCalls = runtime.callsTo("execStream");
-    assertEquals(streamCalls.length, 1);
+      assertEquals(result.autoCommitted, true);
+      // 2 provider invocations: 1 loop + 1 nudge
+      assertEquals(provider.invocations.length, 2);
+      // Nudge invocation should have commit instruction as task
+      assert(
+        provider.invocations[1].task.includes("uncommitted changes"),
+        "nudge task should mention uncommitted changes",
+      );
 
-    await session.dispose();
-  });
+      // Should have an auto-commit exec call
+      const autoCommitCall = container.execCalls.find((c) =>
+        c.command.some((a) =>
+          typeof a === "string" && a.includes("auto-commit")
+        )
+      );
+      assert(autoCommitCall !== undefined, "auto-commit exec should exist");
+    },
+  );
 
   await t.step(
-    "dirty tree triggers nudge, successful nudge returns autoCommitted=false",
+    "nudge: successful nudge returns autoCommitted=false",
     async () => {
-      const runtime = new MockRuntime();
-      const session = await createSession(runtime);
+      const provider = new MockAgentProvider();
+      const container = new MockContainerHandle();
+
+      // Loop completes
+      provider.results = [
+        { completed: true, exitCode: 0 },
+        // nudge invocation
+        { completed: false, exitCode: 0 },
+      ];
 
       let statusCallCount = 0;
-      runtime.exec = (container, command, options) => {
-        runtime.calls.push({
-          method: "exec",
-          args: [container, command, options],
-        });
-        // git status --porcelain
-        if (
-          Array.isArray(command) &&
-          command[0] === "git" && command[1] === "status" &&
-          command.includes("--porcelain")
-        ) {
+      container.execHandler = (command) => {
+        if (command[0] === "git" && command.includes("--porcelain")) {
           statusCallCount++;
-          // First: dirty, second: clean (nudge succeeded)
+          // First: dirty, second: clean (nudge committed)
           if (statusCallCount === 1) {
             return Promise.resolve({
               exitCode: 0,
@@ -381,67 +295,78 @@ Deno.test("AgentRunner", async (t) => {
         }
         return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
       };
-      runtime.execStreamLines = [
-        { line: "KNOX_COMPLETE", stream: "stdout" },
-      ];
 
-      const runner = createRunner(session, { maxLoops: 1 });
+      const runner = createRunner(provider, container);
       const result = await runner.run();
 
       assertEquals(result.autoCommitted, false);
-      // 2 execStream calls: 1 loop + 1 nudge
-      const streamCalls = runtime.callsTo("execStream");
-      assertEquals(streamCalls.length, 2);
-
-      await session.dispose();
+      // 2 provider invocations: 1 loop + 1 nudge
+      assertEquals(provider.invocations.length, 2);
     },
   );
 
+  await t.step("clean tree skips nudge entirely", async () => {
+    const provider = new MockAgentProvider();
+    const container = new MockContainerHandle();
+
+    provider.results = [{ completed: true, exitCode: 0 }];
+    // hasDirtyTree → clean
+    container.execResults = [{ exitCode: 0, stdout: "", stderr: "" }];
+
+    const runner = createRunner(provider, container, { maxLoops: 1 });
+    const result = await runner.run();
+
+    assertEquals(result.autoCommitted, false);
+    // Only 1 provider invocation (the loop), no nudge
+    assertEquals(provider.invocations.length, 1);
+  });
+
+  await t.step("respects abort signal", async () => {
+    const provider = new MockAgentProvider();
+    const container = new MockContainerHandle();
+
+    provider.results = [{ completed: false, exitCode: 0 }];
+    // hasDirtyTree → clean
+    container.execResults = [{ exitCode: 0, stdout: "", stderr: "" }];
+
+    const controller = new AbortController();
+    controller.abort();
+
+    const runner = createRunner(provider, container, {
+      maxLoops: 5,
+      signal: controller.signal,
+    });
+    const result = await runner.run();
+
+    assertEquals(result.completed, false);
+    assertEquals(result.loopsRun, 0);
+    // Provider should never have been invoked
+    assertEquals(provider.invocations.length, 0);
+  });
+
   await t.step(
-    "failed nudge falls back to auto-commit, returns autoCommitted=true",
+    "passes task, loop context, and customPrompt to provider",
     async () => {
-      const runtime = new MockRuntime();
-      const session = await createSession(runtime);
+      const provider = new MockAgentProvider();
+      const container = new MockContainerHandle();
 
-      // Always return dirty for git status
-      runtime.exec = (container, command, options) => {
-        runtime.calls.push({
-          method: "exec",
-          args: [container, command, options],
-        });
-        if (
-          Array.isArray(command) &&
-          command[0] === "git" && command[1] === "status" &&
-          command.includes("--porcelain")
-        ) {
-          return Promise.resolve({
-            exitCode: 0,
-            stdout: " M dirty.ts\n",
-            stderr: "",
-          });
-        }
-        return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
-      };
-      runtime.execStreamLines = [
-        { line: "KNOX_COMPLETE", stream: "stdout" },
-      ];
+      provider.results = [{ completed: true, exitCode: 0 }];
+      // hasDirtyTree → clean
+      container.execResults = [{ exitCode: 0, stdout: "", stderr: "" }];
 
-      const runner = createRunner(session, { maxLoops: 1 });
-      const result = await runner.run();
-
-      assertEquals(result.autoCommitted, true);
-
-      // Should see the auto-commit exec call
-      const execCalls = runtime.callsTo("exec");
-      const autoCommitCall = execCalls.find((c) => {
-        const cmd = c.args[1] as string[];
-        return cmd.some((a) =>
-          typeof a === "string" && a.includes("auto-commit")
-        );
+      const runner = createRunner(provider, container, {
+        maxLoops: 5,
+        customPrompt: "Custom system prompt",
       });
-      assert(autoCommitCall !== undefined, "auto-commit exec should exist");
+      await runner.run();
 
-      await session.dispose();
+      assertEquals(provider.invocations.length, 1);
+      const ctx = provider.invocations[0];
+      assertEquals(ctx.task, "Write tests");
+      assertEquals(ctx.loopNumber, 1);
+      assertEquals(ctx.maxLoops, 5);
+      assertEquals(ctx.customPrompt, "Custom system prompt");
+      assertEquals(ctx.checkFailure, undefined);
     },
   );
 });

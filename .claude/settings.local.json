@@ -15,7 +15,8 @@
       "Read(//private/tmp/**)",
       "Bash(deno run:*)",
       "Bash(echo \"EXIT_CODE=$?\")",
-      "Bash(xargs ls:*)"
+      "Bash(xargs ls:*)",
+      "Bash(deno fmt:*)"
     ]
   }
 }

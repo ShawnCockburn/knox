@@ -3,6 +3,14 @@ export { Knox } from "./knox.ts";
 export type { KnoxEngineOptions, KnoxOutcome, KnoxResult } from "./knox.ts";
 
 // Agent
+export type {
+  AgentContext,
+  AgentProvider,
+  ContainerHandle,
+  InvokeOptions,
+  InvokeResult,
+} from "./agent/mod.ts";
+export { ClaudeCodeAgentProvider } from "./agent/mod.ts";
 export { AgentRunner } from "./agent/mod.ts";
 export type { AgentRunnerOptions, AgentRunnerResult } from "./agent/mod.ts";
 

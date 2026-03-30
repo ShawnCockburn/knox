@@ -6,6 +6,7 @@ import type {
 import type { ContainerId, ExecResult, ImageId } from "../../shared/types.ts";
 import type { SourceProvider } from "../source/source_provider.ts";
 import type { SourceMetadata } from "../source/source_provider.ts";
+import type { ContainerHandle } from "../agent/agent_provider.ts";
 import { log } from "../../shared/log.ts";
 
 /** Container-internal path constants. Only ContainerSession knows these. */
@@ -231,6 +232,20 @@ export class ContainerSession {
   /** Copy a file from the host into the container. */
   copyIn(hostPath: string, containerPath: string): Promise<void> {
     return this.runtime.copyIn(this._containerId, hostPath, containerPath);
+  }
+
+  /** Return a narrow ContainerHandle for use by AgentProviders. */
+  toContainerHandle(): ContainerHandle {
+    return {
+      exec: (command: string[], options?: ExecOptions): Promise<ExecResult> =>
+        this.exec(command, options),
+      execStream: (
+        command: string[],
+        options: ExecOptions & { onLine: OnLineCallback },
+      ): Promise<number> => this.execStream(command, options),
+      copyIn: (hostPath: string, containerPath: string): Promise<void> =>
+        this.copyIn(hostPath, containerPath),
+    };
   }
 
   /** Create a git bundle inside the container and copy it to the host run directory. Returns host-side bundle path. */

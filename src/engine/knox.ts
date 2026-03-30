@@ -1,6 +1,7 @@
 import type { ContainerRuntime } from "../shared/runtime/container_runtime.ts";
 import { DockerRuntime } from "../shared/runtime/docker_runtime.ts";
 import { AgentRunner } from "./agent/agent_runner.ts";
+import { ClaudeCodeAgentProvider } from "./agent/claude_code_agent_provider.ts";
 import { ContainerSession } from "./session/container_session.ts";
 import { generateRunId, taskSlug } from "../shared/types.ts";
 import type {
@@ -212,9 +213,11 @@ export class Knox {
       };
       try {
         log.info(`Starting agent loop (max ${maxLoops} loops)...`);
+        const provider = new ClaudeCodeAgentProvider(model);
+        const containerHandle = session.toContainerHandle();
         const agentRunner = new AgentRunner({
-          session,
-          model,
+          provider,
+          container: containerHandle,
           task,
           maxLoops,
           checkCommand: check,
