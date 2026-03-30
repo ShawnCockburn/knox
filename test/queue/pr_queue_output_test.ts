@@ -31,9 +31,9 @@ function mockRunner(
   handler: (args: string[], cwd: string) => RunnerResponse,
 ): { runner: CommandRunner; calls: RunnerCall[] } {
   const calls: RunnerCall[] = [];
-  const runner: CommandRunner = async (args, cwd) => {
+  const runner: CommandRunner = (args, cwd) => {
     calls.push({ args: [...args], cwd });
-    return handler(args, cwd);
+    return Promise.resolve(handler(args, cwd));
   };
   return { runner, calls };
 }
@@ -56,6 +56,11 @@ function happyRunner(
         stderr: "",
         code: 0,
       };
+    }
+
+    // git push
+    if (args[0] === "git" && args[1] === "push") {
+      return { success: true, stdout: "", stderr: "", code: 0 };
     }
 
     // Default branch detection
@@ -588,6 +593,9 @@ Deno.test("PullRequestQueueOutput — auto-detects default branch from git", asy
         stderr: "",
         code: 0,
       };
+    }
+    if (args[0] === "git" && args[1] === "push") {
+      return { success: true, stdout: "", stderr: "", code: 0 };
     }
     if (args[0] === "gh" && args[2] === "create") {
       return {

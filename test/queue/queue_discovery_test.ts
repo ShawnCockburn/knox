@@ -34,6 +34,7 @@ function fakeReport(
     finishedAt: new Date().toISOString(),
     durationMs: 100,
     items: [{ id: "task", status }],
+    manifest: { items: [] },
   };
 }
 
@@ -201,7 +202,7 @@ Deno.test("runMultiQueue - runs queues sequentially (verify order via callbacks)
     onQueueStart: (name) => order.push(`start:${name}`),
     onQueueComplete: (name) => order.push(`done:${name}`),
     _orchestratorFactory: (_opts: OrchestratorOptions) => ({
-      run: async (): Promise<QueueReport> => fakeReport("task"),
+      run: (): Promise<QueueReport> => Promise.resolve(fakeReport("task")),
     }),
   });
 
@@ -228,7 +229,7 @@ Deno.test("runMultiQueue - combined report includes all queues", async () => {
     allowedIPs: [],
     dir: "/tmp",
     _orchestratorFactory: (_opts: OrchestratorOptions) => ({
-      run: async (): Promise<QueueReport> => fakeReport("task"),
+      run: (): Promise<QueueReport> => Promise.resolve(fakeReport("task")),
     }),
   });
 
@@ -256,10 +257,9 @@ Deno.test("runMultiQueue - abort mid-queue skips remaining queues", async () => 
     signal: controller.signal,
     onQueueStart: (name) => started.push(name),
     _orchestratorFactory: (_opts: OrchestratorOptions) => ({
-      run: async (): Promise<QueueReport> => {
-        // Abort after the first queue starts running
+      run: (): Promise<QueueReport> => {
         controller.abort();
-        return fakeReport("task");
+        return Promise.resolve(fakeReport("task"));
       },
     }),
   });
@@ -285,7 +285,7 @@ Deno.test("runMultiQueue - calls queueOutput.deliver() for each completed queue"
       },
     },
     _orchestratorFactory: (_opts: OrchestratorOptions) => ({
-      run: async (): Promise<QueueReport> => fakeReport("task"),
+      run: (): Promise<QueueReport> => Promise.resolve(fakeReport("task")),
     }),
   });
 

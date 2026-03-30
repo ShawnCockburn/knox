@@ -40,36 +40,35 @@ Use these findings to pre-fill suggestions for every question below.
 ## Step 3 — Interview (one question at a time)
 
 Ask the following questions one at a time, proposing an answer based on what you
-found. Skip questions where the defaults from `.knox/config.yaml` are sufficient.
+found. Skip questions where the defaults from `.knox/config.yaml` are
+sufficient.
 
 **a) Features**
 
-> Does this task need specific language runtimes?
-> _(Queue default: `<from config or "none">`. Available: python, node, deno, go,
-> rust, ruby.)_
+> Does this task need specific language runtimes? _(Queue default:
+> `<from config or "none">`. Available: python, node, deno, go, rust, ruby.)_
 
 Skip if the config default covers the task's needs and tell the user you're
 using the default.
 
 **b) Prepare command**
 
-> Is there a setup command needed beyond the queue default?
-> _(Queue default: `<from config or "none">`)_
+> Is there a setup command needed beyond the queue default? _(Queue default:
+> `<from config or "none">`)_
 
 Skip if the config default is sufficient.
 
 **c) Check command**
 
-> What command verifies the task is done correctly?
-> _(Queue default: `<from config or "none">`)_
+> What command verifies the task is done correctly? _(Queue default:
+> `<from config or "none">`)_
 
 Skip if the config default is sufficient.
 
 **d) Model**
 
-> Which model should Knox use?
-> _(Queue default: `<from config or "sonnet">`. Use `opus` only for tasks
-> requiring deep reasoning.)_
+> Which model should Knox use? _(Queue default: `<from config or "sonnet">`. Use
+> `opus` only for tasks requiring deep reasoning.)_
 
 Skip if sonnet (or the config default) is appropriate.
 
@@ -91,12 +90,12 @@ field matches the defaults, omit the frontmatter block entirely.
 
 ```markdown
 ---
-model: opus              # omit if using queue default
-features:                # omit if using queue default
+model: opus # omit if using queue default
+features: # omit if using queue default
   - python:3.12
-prepare: "pip install -r requirements.txt"  # omit if using queue default
-check: "pytest"          # omit if using queue default
-maxLoops: 8              # omit if using queue default
+prepare: "pip install -r requirements.txt" # omit if using queue default
+check: "pytest" # omit if using queue default
+maxLoops: 8 # omit if using queue default
 ---
 
 <Detailed task description>

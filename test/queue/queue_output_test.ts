@@ -31,23 +31,25 @@ class MockQueueSource implements QueueSource {
     return Promise.resolve(this.loadResult);
   }
 
-  async update(itemId: string, state: Partial<ItemState>): Promise<void> {
+  update(itemId: string, state: Partial<ItemState>): Promise<void> {
     this.updates.push({ itemId, state: { ...state } });
+    return Promise.resolve();
   }
 
-  async writeState(s: QueueState): Promise<void> {
+  writeState(s: QueueState): Promise<void> {
     this.state = structuredClone(s);
+    return Promise.resolve();
   }
 
-  async readState(): Promise<QueueState | null> {
-    return this.state;
+  readState(): Promise<QueueState | null> {
+    return Promise.resolve(this.state);
   }
 }
 
 function mockEngineFactory() {
   return (opts: KnoxEngineOptions) => ({
-    async run(): Promise<KnoxOutcome> {
-      return {
+    run(): Promise<KnoxOutcome> {
+      return Promise.resolve({
         ok: true,
         result: {
           runId: opts.runId!,
@@ -69,7 +71,7 @@ function mockEngineFactory() {
             autoCommitted: false,
           },
         },
-      };
+      });
     },
   });
 }
@@ -113,12 +115,12 @@ Deno.test("Orchestrator + queueOutput", async (t) => {
       > = [];
 
       const mockOutput: QueueOutput = {
-        async deliver(
+        deliver(
           report: QueueReport,
           manifest: QueueManifest,
         ): Promise<QueueOutputResult> {
           deliverCalls.push({ report, manifest });
-          return {};
+          return Promise.resolve({});
         },
       };
 
@@ -199,8 +201,8 @@ Deno.test("Orchestrator + queueOutput", async (t) => {
       const logDir = await setupLogDir();
       try {
         const mockOutput: QueueOutput = {
-          async deliver(): Promise<QueueOutputResult> {
-            return {
+          deliver(): Promise<QueueOutputResult> {
+            return Promise.resolve({
               prs: [
                 {
                   itemId: "a",
@@ -209,7 +211,7 @@ Deno.test("Orchestrator + queueOutput", async (t) => {
                   draft: false,
                 },
               ],
-            };
+            });
           },
         };
 

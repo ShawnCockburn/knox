@@ -28,6 +28,9 @@
   "compilerOptions": {
     "strict": true
   },
+  "fmt": {
+    "exclude": [".claude/"]
+  },
   "lint": {
     "rules": {
       "exclude": ["no-control-regex"]

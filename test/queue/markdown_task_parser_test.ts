@@ -50,7 +50,7 @@ Do the thing.
 `;
     const result = parseMarkdownTask(content, "legacy-task.md");
     assertEquals(result?.ok, false);
-    if (!result?.ok) {
+    if (result && !result.ok) {
       assertEquals(result.errors.some((e) => e.field === "setup"), true);
       assertStringIncludes(result.errors[0].message, "prepare");
     }
@@ -80,7 +80,7 @@ model: claude-opus-4-6
 `;
       const result = parseMarkdownTask(content, "empty-body.md");
       assertEquals(result?.ok, false);
-      if (!result?.ok) {
+      if (result && !result.ok) {
         assertEquals(result.errors.some((e) => e.field === "task"), true);
       }
     },
@@ -95,7 +95,7 @@ Some body.
 `;
     const result = parseMarkdownTask(content, "bad-yaml.md");
     assertEquals(result?.ok, false);
-    if (!result?.ok) {
+    if (result && !result.ok) {
       assertEquals(result.errors.some((e) => e.field === "frontmatter"), true);
     }
   });

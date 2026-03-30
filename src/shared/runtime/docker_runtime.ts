@@ -99,7 +99,9 @@ export class DockerRuntime implements ContainerRuntime {
     log.debug(`docker ${args.join(" ")}`);
     const result = await this.run(args);
     if (result.exitCode !== 0) {
-      log.debug(`  exit=${result.exitCode} stdout=${result.stdout.trimEnd()} stderr=${result.stderr.trimEnd()}`);
+      log.debug(
+        `  exit=${result.exitCode} stdout=${result.stdout.trimEnd()} stderr=${result.stderr.trimEnd()}`,
+      );
     } else {
       log.debug(`  exit=0`);
     }

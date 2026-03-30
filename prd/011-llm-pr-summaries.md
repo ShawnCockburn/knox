@@ -3,11 +3,11 @@
 ## Problem Statement
 
 When Knox creates pull requests via `--output pr`, the titles and descriptions
-are low quality. The PR title is the first line of the task instruction truncated
-to 72 characters. The PR body is essentially empty — just the title repeated, a
-"Created by Knox" footer, and dependency callouts for stacked PRs. There is no
-summary of what actually changed, no context about why, and no synthesis of
-grouped work.
+are low quality. The PR title is the first line of the task instruction
+truncated to 72 characters. The PR body is essentially empty — just the title
+repeated, a "Created by Knox" footer, and dependency callouts for stacked PRs.
+There is no summary of what actually changed, no context about why, and no
+synthesis of grouped work.
 
 For PRs sourced from GitHub Issues, there is no linkage back to the originating
 issue — reviewers can't see the context, and merging doesn't auto-close the
@@ -28,17 +28,17 @@ fails, Knox falls back to the current simple title and includes a visible note
 in the PR body so reviewers know summarization failed.
 
 To run the LLM call in a sandboxed environment consistent with Knox's security
-model, introduce a new **UtilityContainer** abstraction — a lightweight container
-that can run small Claude prompts without the full task execution machinery (no
-git repo, no source provider, no progress tracking). PR summarization is the
-first consumer; the abstraction generalizes to future utility jobs (triage,
-labeling, classification).
+model, introduce a new **UtilityContainer** abstraction — a lightweight
+container that can run small Claude prompts without the full task execution
+machinery (no git repo, no source provider, no progress tracking). PR
+summarization is the first consumer; the abstraction generalizes to future
+utility jobs (triage, labeling, classification).
 
 ## User Stories
 
 1. As a PR reviewer, I want Knox PRs to have descriptive titles that summarize
-   the actual change, so that I can triage PRs from my inbox without opening each
-   one.
+   the actual change, so that I can triage PRs from my inbox without opening
+   each one.
 
 2. As a PR reviewer, I want Knox PR descriptions to include a summary of what
    changed and why, so that I have context before reading the diff.
@@ -46,17 +46,17 @@ labeling, classification).
 3. As a PR reviewer, I want Knox PR descriptions to list key changes as bullet
    points derived from commits, so that I can quickly scan the scope of work.
 
-4. As a team member, I want Knox PRs sourced from GitHub Issues to reference
-   the originating issue with `Closes #N`, so that merging the PR auto-closes
-   the issue.
+4. As a team member, I want Knox PRs sourced from GitHub Issues to reference the
+   originating issue with `Closes #N`, so that merging the PR auto-closes the
+   issue.
 
 5. As a team member, I want Knox PRs sourced from GitHub Issues to display the
    issue number and title in the PR description, so that reviewers can see the
    full context at a glance.
 
 6. As a user with grouped tasks, I want the PR title to synthesize all tasks in
-   the group into a single coherent title, so that the PR represents the combined
-   scope rather than an arbitrary single task.
+   the group into a single coherent title, so that the PR represents the
+   combined scope rather than an arbitrary single task.
 
 7. As a user with grouped tasks, I want the PR description to reflect all tasks
    that contributed to the branch, so that no work is hidden.
@@ -73,8 +73,8 @@ labeling, classification).
     manually.
 
 11. As a user running `knox run --output pr` (single task mode), I want the same
-    high-quality LLM-generated title and description, so that single-task PRs are
-    as polished as queue PRs.
+    high-quality LLM-generated title and description, so that single-task PRs
+    are as polished as queue PRs.
 
 12. As a Knox developer, I want the UtilityContainer abstraction to be reusable
     for future lightweight LLM jobs, so that I don't have to reinvent container
@@ -95,7 +95,8 @@ A lightweight container abstraction wrapping `DockerRuntime`. Unlike
 `ContainerSession`, it has no source provider, no git workspace, no progress
 tracking, and no task execution loop.
 
-- Always uses the base image (`knox-agent:latest`) via `ImageManager.ensureBaseImage()`.
+- Always uses the base image (`knox-agent:latest`) via
+  `ImageManager.ensureBaseImage()`.
 - Network restricted to Anthropic API IPs using the existing `restrictNetwork`
   logic from `DockerRuntime`.
 - Input delivered via stdin pipe to the container process.
@@ -106,11 +107,12 @@ tracking, and no task execution loop.
 
 ### PrSummaryGenerator (new module)
 
-Responsible for constructing the LLM prompt, invoking Claude via UtilityContainer,
-and parsing the response.
+Responsible for constructing the LLM prompt, invoking Claude via
+UtilityContainer, and parsing the response.
 
-- Constructs a prompt containing: task bodies (all in group), git commit messages
-  from the branch, and issue references (if sourced from GitHub Issues).
+- Constructs a prompt containing: task bodies (all in group), git commit
+  messages from the branch, and issue references (if sourced from GitHub
+  Issues).
 - Invokes `claude -p --model haiku` inside the UtilityContainer with the prompt
   piped via stdin.
 - Prompt instructs the LLM to respond with `<title>` and `<body>` XML tags.
@@ -119,8 +121,8 @@ and parsing the response.
 - Body instruction: 2-4 sentence summary, then bullet list of key changes.
 - On any failure (container error, parse error, timeout), returns a fallback
   result with the current simple title and a body containing a visible failure
-  note: "*Knox was unable to generate a summary for this PR. Review the commits
-  for details.*"
+  note: "_Knox was unable to generate a summary for this PR. Review the commits
+  for details._"
 - One attempt, no retries.
 - The prompt template lives as a template string in the module code, not a
   separate file.
@@ -147,9 +149,10 @@ and parsing the response.
 ### Issue number plumbing
 
 - `GitHubIssueQueueSource` already tracks issue numbers via `getIssueNumber()`.
-- The CLI passes the issue number map from the source to `PullRequestQueueOutput`
-  at construction time.
-- For non-GitHub-Issue sources, the map is empty and the Tasks section is omitted.
+- The CLI passes the issue number map from the source to
+  `PullRequestQueueOutput` at construction time.
+- For non-GitHub-Issue sources, the map is empty and the Tasks section is
+  omitted.
 - Issue titles are available from the manifest's `QueueItem.task` field (first
   line), which is derived from the GitHub Issue title during mapping.
 
@@ -194,7 +197,8 @@ command runner) at the boundary.
 
 ### PrSummaryGenerator
 
-- Test that the prompt includes all task bodies, commit messages, and issue refs.
+- Test that the prompt includes all task bodies, commit messages, and issue
+  refs.
 - Test that a well-formed LLM response is parsed into title and body.
 - Test that a malformed response (missing tags, empty, garbage) returns the
   fallback title and failure-note body.
@@ -218,10 +222,10 @@ command runner) at the boundary.
 
 ### Prior art
 
-- `test/queue/pr_queue_output_test.ts` — mock CommandRunner pattern, `makeReport`
-  builder, call sequence verification.
-- `test/session/container_session_test.ts` — MockRuntime pattern, `createOptions`
-  builder, call sequence and argument verification.
+- `test/queue/pr_queue_output_test.ts` — mock CommandRunner pattern,
+  `makeReport` builder, call sequence verification.
+- `test/session/container_session_test.ts` — MockRuntime pattern,
+  `createOptions` builder, call sequence and argument verification.
 
 ## Out of Scope
 

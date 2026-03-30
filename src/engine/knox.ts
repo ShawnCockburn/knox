@@ -97,9 +97,13 @@ export class Knox {
 
     const emit = (event: KnoxEvent) => onEvent?.(event);
 
-    log.debug(`[knox] Starting run ${runId}: image=${image} model=${model} maxLoops=${maxLoops}`);
+    log.debug(
+      `[knox] Starting run ${runId}: image=${image} model=${model} maxLoops=${maxLoops}`,
+    );
     log.debug(`[knox] dir=${dir} runDir=${runDir}`);
-    log.debug(`[knox] envVars: ${envVars.map((e) => e.split("=")[0]).join(", ")}`);
+    log.debug(
+      `[knox] envVars: ${envVars.map((e) => e.split("=")[0]).join(", ")}`,
+    );
     log.debug(`[knox] allowedIPs: ${allowedIPs.join(", ")}`);
     log.debug(`[knox] task: ${task.slice(0, 200)}`);
 
@@ -182,7 +186,11 @@ export class Knox {
         };
         signal?.addEventListener("abort", onAbort);
       } catch (e) {
-        log.debug(`[knox] Container creation failed: ${e instanceof Error ? e.message : e}`);
+        log.debug(
+          `[knox] Container creation failed: ${
+            e instanceof Error ? e.message : e
+          }`,
+        );
         if (signal?.aborted) return makeAbortResult();
         return {
           ok: false,
@@ -216,10 +224,16 @@ export class Knox {
           signal,
         });
         agentResult = await agentRunner.run();
-        log.debug(`[knox] Agent loop finished: completed=${agentResult.completed} loops=${agentResult.loopsRun} autoCommitted=${agentResult.autoCommitted}`);
+        log.debug(
+          `[knox] Agent loop finished: completed=${agentResult.completed} loops=${agentResult.loopsRun} autoCommitted=${agentResult.autoCommitted}`,
+        );
       } catch (e) {
-        log.debug(`[knox] Agent loop failed: ${e instanceof Error ? e.message : e}`);
-        if (e instanceof Error && e.stack) log.debug(`[knox] Stack: ${e.stack}`);
+        log.debug(
+          `[knox] Agent loop failed: ${e instanceof Error ? e.message : e}`,
+        );
+        if (e instanceof Error && e.stack) {
+          log.debug(`[knox] Stack: ${e.stack}`);
+        }
         if (signal?.aborted) return makeAbortResult();
         return {
           ok: false,
@@ -245,7 +259,9 @@ export class Knox {
         log.debug(`[knox] Bundle extracted: ${bundlePath}`);
         emit({ type: "bundle:extracted", path: bundlePath });
       } catch (e) {
-        log.debug(`[knox] Bundle failed: ${e instanceof Error ? e.message : e}`);
+        log.debug(
+          `[knox] Bundle failed: ${e instanceof Error ? e.message : e}`,
+        );
         if (signal?.aborted) return makeAbortResult();
         return {
           ok: false,

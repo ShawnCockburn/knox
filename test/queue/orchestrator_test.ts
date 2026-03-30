@@ -23,10 +23,10 @@ function mockEngineFactory(
     calls.push(opts);
     const taskKey = opts.task;
     return {
-      async run(): Promise<KnoxOutcome> {
+      run(): Promise<KnoxOutcome> {
         const outcome = outcomes.get(taskKey);
         if (!outcome) {
-          return {
+          return Promise.resolve({
             ok: true,
             result: {
               runId: opts.runId!,
@@ -48,9 +48,9 @@ function mockEngineFactory(
                 autoCommitted: false,
               },
             },
-          };
+          });
         }
-        return outcome;
+        return Promise.resolve(outcome);
       },
     };
   };
@@ -76,16 +76,18 @@ class MockQueueSource implements QueueSource {
     return Promise.resolve(this.loadResult);
   }
 
-  async update(itemId: string, state: Partial<ItemState>): Promise<void> {
+  update(itemId: string, state: Partial<ItemState>): Promise<void> {
     this.updates.push({ itemId, state: { ...state } });
+    return Promise.resolve();
   }
 
-  async writeState(s: QueueState): Promise<void> {
+  writeState(s: QueueState): Promise<void> {
     this.state = structuredClone(s);
+    return Promise.resolve();
   }
 
-  async readState(): Promise<QueueState | null> {
-    return this.state;
+  readState(): Promise<QueueState | null> {
+    return Promise.resolve(this.state);
   }
 }
 
@@ -582,9 +584,9 @@ Deno.test("Orchestrator", async (t) => {
       try {
         const order: string[] = [];
         const engineFactory = (opts: KnoxEngineOptions) => ({
-          async run(): Promise<KnoxOutcome> {
+          run(): Promise<KnoxOutcome> {
             order.push(opts.task);
-            return {
+            return Promise.resolve({
               ok: true,
               result: {
                 runId: opts.runId!,
@@ -606,7 +608,7 @@ Deno.test("Orchestrator", async (t) => {
                   autoCommitted: false,
                 },
               },
-            };
+            });
           },
         });
 
@@ -646,11 +648,10 @@ Deno.test("Orchestrator", async (t) => {
       const engineCalls: KnoxEngineOptions[] = [];
       const engineFactory = (opts: KnoxEngineOptions) => {
         engineCalls.push(opts);
-        // Return a branch matching the branchName override if provided
         const branch = opts.branchName ?? `knox/test-${opts.runId}`;
         return {
-          async run(): Promise<KnoxOutcome> {
-            return {
+          run(): Promise<KnoxOutcome> {
+            return Promise.resolve({
               ok: true,
               result: {
                 runId: opts.runId!,
@@ -672,7 +673,7 @@ Deno.test("Orchestrator", async (t) => {
                   autoCommitted: false,
                 },
               },
-            };
+            });
           },
         };
       };
@@ -747,8 +748,8 @@ Deno.test("Orchestrator", async (t) => {
         engineCalls.push(opts);
         const branch = opts.branchName ?? `knox/test-${opts.runId}`;
         return {
-          async run(): Promise<KnoxOutcome> {
-            return {
+          run(): Promise<KnoxOutcome> {
+            return Promise.resolve({
               ok: true,
               result: {
                 runId: opts.runId!,
@@ -770,7 +771,7 @@ Deno.test("Orchestrator", async (t) => {
                   autoCommitted: false,
                 },
               },
-            };
+            });
           },
         };
       };
@@ -1006,14 +1007,13 @@ Deno.test("Orchestrator", async (t) => {
 
       // Engine that emits events via onEvent callback
       const engineFactory = (opts: KnoxEngineOptions) => ({
-        async run(): Promise<KnoxOutcome> {
-          // Simulate engine emitting events
+        run(): Promise<KnoxOutcome> {
           opts.onEvent?.({ type: "container:created", containerId: "c1" });
           opts.onEvent?.({ type: "loop:start", loop: 1, maxLoops: 3 });
           opts.onEvent?.({ type: "loop:end", loop: 1, completed: true });
           opts.onEvent?.({ type: "bundle:extracted", path: "/tmp/b" });
 
-          return {
+          return Promise.resolve({
             ok: true,
             result: {
               runId: opts.runId!,
@@ -1035,7 +1035,7 @@ Deno.test("Orchestrator", async (t) => {
                 autoCommitted: false,
               },
             },
-          };
+          });
         },
       });
 
@@ -1083,13 +1083,12 @@ Deno.test("Orchestrator", async (t) => {
       let callCount = 0;
 
       const engineFactory = (opts: KnoxEngineOptions) => ({
-        async run(): Promise<KnoxOutcome> {
+        run(): Promise<KnoxOutcome> {
           callCount++;
           if (callCount === 1) {
-            // Abort after first item starts
             controller.abort();
           }
-          return {
+          return Promise.resolve({
             ok: true,
             result: {
               runId: opts.runId!,
@@ -1111,7 +1110,7 @@ Deno.test("Orchestrator", async (t) => {
                 autoCommitted: false,
               },
             },
-          };
+          });
         },
       });
 

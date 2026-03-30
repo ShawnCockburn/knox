@@ -1,8 +1,5 @@
 import { assert, assertEquals } from "@std/assert";
-import {
-  QueueTUI,
-  truncateAnsi,
-} from "../../../src/queue/tui/queue_tui.ts";
+import { QueueTUI, truncateAnsi } from "../../../src/queue/tui/queue_tui.ts";
 
 /** Capture all write calls from QueueTUI. */
 function createCapture(): { writes: string[]; writeFn: (s: string) => void } {
@@ -157,7 +154,7 @@ Deno.test("Phase 1: overwrite-in-place rendering", async (t) => {
       tui.start(); // renders header + 5 items = 6 lines
 
       // Record writes so far
-      const firstRenderIdx = writes.length;
+      const _firstRenderIdx = writes.length;
 
       // Mark items as completed (they still render but let's reduce via blocking)
       // Actually the best test: call stop() which does a final render.
@@ -388,11 +385,14 @@ Deno.test("truncateAnsi", async (t) => {
     assert(result.endsWith("\x1b[0m"), "should end with RESET");
   });
 
-  await t.step("preserves ANSI codes and does not count them toward width", () => {
-    // 3 visible chars with color codes around them
-    const input = "\x1b[32mABC\x1b[0m";
-    assertEquals(truncateAnsi(input, 80), input);
-  });
+  await t.step(
+    "preserves ANSI codes and does not count them toward width",
+    () => {
+      // 3 visible chars with color codes around them
+      const input = "\x1b[32mABC\x1b[0m";
+      assertEquals(truncateAnsi(input, 80), input);
+    },
+  );
 
   await t.step("truncates colored text correctly", () => {
     // "hello" in green = 5 visible chars
@@ -443,7 +443,9 @@ Deno.test("Render truncates lines to terminal width", () => {
     const visible = line.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
     assert(
       visible.length <= 40,
-      `line exceeds terminal width (${visible.length} > 40): ${JSON.stringify(visible)}`,
+      `line exceeds terminal width (${visible.length} > 40): ${
+        JSON.stringify(visible)
+      }`,
     );
   }
 });

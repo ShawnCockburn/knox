@@ -445,7 +445,9 @@ export class Orchestrator {
         };
 
         this.options.onItemFailed?.(item.id, outcome.error);
-        log.info(`[${item.id}] Failed (phase: ${outcome.phase}): ${outcome.error}`);
+        log.info(
+          `[${item.id}] Failed (phase: ${outcome.phase}): ${outcome.error}`,
+        );
 
         // Block dependents transitively
         this.blockDependents(item.id, manifest, state);

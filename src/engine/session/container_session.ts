@@ -83,7 +83,9 @@ export class ContainerSession {
     log.info(`Preparing source...`);
     const prepareResult = await sourceProvider.prepare(runId);
     log.debug(`[session] Source prepared: hostPath=${prepareResult.hostPath}`);
-    log.debug(`[session] Source metadata: ${JSON.stringify(prepareResult.metadata)}`);
+    log.debug(
+      `[session] Source metadata: ${JSON.stringify(prepareResult.metadata)}`,
+    );
     for (const warning of prepareResult.warnings ?? []) {
       log.warn(warning);
     }
@@ -96,8 +98,16 @@ export class ContainerSession {
       "DISABLE_AUTOUPDATE=1",
     ];
     log.debug(`[session] Image: ${image}`);
-    log.debug(`[session] Env vars: ${containerEnv.map((e) => e.split("=")[0]).join(", ")}`);
-    log.debug(`[session] CPU: ${cpuLimit ?? "default"}, Memory: ${memoryLimit ?? "default"}`);
+    log.debug(
+      `[session] Env vars: ${
+        containerEnv.map((e) => e.split("=")[0]).join(", ")
+      }`,
+    );
+    log.debug(
+      `[session] CPU: ${cpuLimit ?? "default"}, Memory: ${
+        memoryLimit ?? "default"
+      }`,
+    );
     const containerId = await runtime.createContainer({
       image,
       name: `knox-${runId}`,
@@ -125,7 +135,9 @@ export class ContainerSession {
       { user: "root" },
     );
     if (chownResult.exitCode !== 0) {
-      log.debug(`[session] chown failed (exit ${chownResult.exitCode}): ${chownResult.stderr}`);
+      log.debug(
+        `[session] chown failed (exit ${chownResult.exitCode}): ${chownResult.stderr}`,
+      );
     } else {
       log.debug(`[session] Ownership fixed`);
     }
@@ -135,7 +147,11 @@ export class ContainerSession {
     await sourceProvider.cleanup(runId);
 
     // Lock down network to API-only egress
-    log.debug(`[session] Restricting network to ${allowedIPs.length} IPs: ${allowedIPs.join(", ")}`);
+    log.debug(
+      `[session] Restricting network to ${allowedIPs.length} IPs: ${
+        allowedIPs.join(", ")
+      }`,
+    );
     await runtime.restrictNetwork(containerId, allowedIPs);
     log.debug(`[session] Network restricted`);
 
@@ -147,7 +163,9 @@ export class ContainerSession {
       `cd ${WORKSPACE} && git rev-parse --git-dir`,
     ]);
     if (gitCheck.exitCode !== 0) {
-      log.debug(`[session] git check failed: stdout=${gitCheck.stdout} stderr=${gitCheck.stderr}`);
+      log.debug(
+        `[session] git check failed: stdout=${gitCheck.stdout} stderr=${gitCheck.stderr}`,
+      );
       // Clean up container before throwing
       await runtime.remove(containerId).catch(() => {});
       throw new Error(
@@ -164,7 +182,9 @@ export class ContainerSession {
       `cd ${WORKSPACE} && printf 'knox-progress.txt\\n.knox/\\n' >> .git/info/exclude`,
     ]);
     if (excludeResult.exitCode !== 0) {
-      log.debug(`[session] git exclude setup failed (exit ${excludeResult.exitCode}): ${excludeResult.stderr}`);
+      log.debug(
+        `[session] git exclude setup failed (exit ${excludeResult.exitCode}): ${excludeResult.stderr}`,
+      );
     } else {
       log.debug(`[session] Git exclude configured`);
     }

@@ -46,7 +46,9 @@ export class AgentRunner {
     let completed = false;
     let loopsRun = this.options.maxLoops;
 
-    log.debug(`[agent] Starting agent run: model=${this.options.model} maxLoops=${this.options.maxLoops}`);
+    log.debug(
+      `[agent] Starting agent run: model=${this.options.model} maxLoops=${this.options.maxLoops}`,
+    );
     log.debug(`[agent] Task: ${this.options.task.slice(0, 200)}...`);
 
     for (let loop = 1; loop <= this.options.maxLoops; loop++) {
@@ -80,15 +82,21 @@ export class AgentRunner {
       if (result.completed) {
         // If there's a check command, verify
         if (this.options.checkCommand) {
-          log.debug(`[agent] Running post-loop check: ${this.options.checkCommand}`);
+          log.debug(
+            `[agent] Running post-loop check: ${this.options.checkCommand}`,
+          );
           const checkResult = await this.session.exec(
             ["sh", "-c", this.options.checkCommand],
           );
 
           if (checkResult.exitCode !== 0) {
             log.warn("Post loop check failed");
-            log.debug(`[agent] Check stdout: ${checkResult.stdout.slice(0, 500)}`);
-            log.debug(`[agent] Check stderr: ${checkResult.stderr.slice(0, 500)}`);
+            log.debug(
+              `[agent] Check stdout: ${checkResult.stdout.slice(0, 500)}`,
+            );
+            log.debug(
+              `[agent] Check stderr: ${checkResult.stderr.slice(0, 500)}`,
+            );
             checkFailure = checkResult.stdout + checkResult.stderr;
             this.options.onEvent?.({
               type: "check:failed",
@@ -112,7 +120,9 @@ export class AgentRunner {
     log.debug(`[agent] Commit nudge result: autoCommitted=${autoCommitted}`);
     this.options.onEvent?.({ type: "nudge:result", committed: autoCommitted });
 
-    log.debug(`[agent] Agent run complete: completed=${completed} loopsRun=${loopsRun}`);
+    log.debug(
+      `[agent] Agent run complete: completed=${completed} loopsRun=${loopsRun}`,
+    );
     return { completed, loopsRun, autoCommitted };
   }
 
@@ -151,7 +161,9 @@ export class AgentRunner {
         "-c",
         `git add -A && git commit -m "knox: auto-commit uncommitted agent work"`,
       ]);
-      log.debug(`[agent] Auto-commit exit=${commitResult.exitCode} stdout=${commitResult.stdout.trimEnd()}`);
+      log.debug(
+        `[agent] Auto-commit exit=${commitResult.exitCode} stdout=${commitResult.stdout.trimEnd()}`,
+      );
       return true;
     }
 
@@ -167,18 +179,26 @@ export class AgentRunner {
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
         if (attempt > 0) {
-          log.debug(`[agent] Loop ${loopNumber} retry attempt ${attempt}/${MAX_RETRIES}`);
+          log.debug(
+            `[agent] Loop ${loopNumber} retry attempt ${attempt}/${MAX_RETRIES}`,
+          );
         }
         const result = await this.runOneLoop(loopNumber, checkFailure);
 
         if (result.exitCode !== 0 && attempt < MAX_RETRIES) {
-          log.debug(`[agent] Loop ${loopNumber} exited with ${result.exitCode}, retrying after ${1000 * Math.pow(2, attempt)}ms...`);
+          log.debug(
+            `[agent] Loop ${loopNumber} exited with ${result.exitCode}, retrying after ${
+              1000 * Math.pow(2, attempt)
+            }ms...`,
+          );
           await delay(1000 * Math.pow(2, attempt));
           continue;
         }
 
         if (result.exitCode !== 0) {
-          log.debug(`[agent] Loop ${loopNumber} exited with ${result.exitCode} after all retries`);
+          log.debug(
+            `[agent] Loop ${loopNumber} exited with ${result.exitCode} after all retries`,
+          );
         }
 
         return { completed: result.completed };
@@ -186,7 +206,9 @@ export class AgentRunner {
         lastError = e instanceof Error ? e : new Error(String(e));
         log.debug(`[agent] Loop ${loopNumber} threw: ${lastError.message}`);
         if (attempt < MAX_RETRIES) {
-          log.debug(`[agent] Retrying after ${1000 * Math.pow(2, attempt)}ms...`);
+          log.debug(
+            `[agent] Retrying after ${1000 * Math.pow(2, attempt)}ms...`,
+          );
           await delay(1000 * Math.pow(2, attempt));
           continue;
         }
@@ -203,11 +225,21 @@ export class AgentRunner {
     // Gather context
     log.debug(`[agent] Loop ${loopNumber}: reading progress file...`);
     const progressFileContent = await this.readProgressFile();
-    log.debug(`[agent] Loop ${loopNumber}: progress file ${progressFileContent ? `found (${progressFileContent.length} bytes)` : "not found"}`);
+    log.debug(
+      `[agent] Loop ${loopNumber}: progress file ${
+        progressFileContent
+          ? `found (${progressFileContent.length} bytes)`
+          : "not found"
+      }`,
+    );
 
     log.debug(`[agent] Loop ${loopNumber}: reading git log...`);
     const gitLog = await this.readGitLog();
-    log.debug(`[agent] Loop ${loopNumber}: git log ${gitLog ? `found (${gitLog.length} bytes)` : "empty"}`);
+    log.debug(
+      `[agent] Loop ${loopNumber}: git log ${
+        gitLog ? `found (${gitLog.length} bytes)` : "empty"
+      }`,
+    );
 
     // Build prompt
     log.debug(`[agent] Loop ${loopNumber}: building prompt...`);
@@ -220,7 +252,9 @@ export class AgentRunner {
       checkFailure,
       customPrompt: this.options.customPrompt,
     });
-    log.debug(`[agent] Loop ${loopNumber}: prompt built (${prompt.length} bytes)`);
+    log.debug(
+      `[agent] Loop ${loopNumber}: prompt built (${prompt.length} bytes)`,
+    );
 
     // Write prompt to container (mkdir and chown as root since docker cp creates root-owned files)
     log.debug(`[agent] Loop ${loopNumber}: writing prompt to container...`);
@@ -258,12 +292,18 @@ export class AgentRunner {
       },
     );
 
-    log.debug(`[agent] Loop ${loopNumber}: claude exited with code ${exitCode}, completed=${completed}`);
+    log.debug(
+      `[agent] Loop ${loopNumber}: claude exited with code ${exitCode}, completed=${completed}`,
+    );
     if (exitCode !== 0) {
-      log.debug(`[agent] Loop ${loopNumber}: stderr line count: ${stderrLines.length}`);
+      log.debug(
+        `[agent] Loop ${loopNumber}: stderr line count: ${stderrLines.length}`,
+      );
       if (stderrLines.length > 0) {
         log.debug(
-          `[agent] Loop ${loopNumber}: stderr (last 30 lines):\n${stderrLines.slice(-30).join("\n")}`,
+          `[agent] Loop ${loopNumber}: stderr (last 30 lines):\n${
+            stderrLines.slice(-30).join("\n")
+          }`,
         );
       }
     }

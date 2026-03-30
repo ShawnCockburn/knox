@@ -42,7 +42,9 @@ export function truncateAnsi(str: string, maxWidth: number): string {
     if (str.charCodeAt(i) === 0x1b && str.charCodeAt(i + 1) === 0x5b) {
       i += 2; // skip ESC [
       // Consume parameter bytes (0x30–0x3f) and intermediate bytes (0x20–0x2f)
-      while (i < str.length && str.charCodeAt(i) >= 0x20 && str.charCodeAt(i) <= 0x3f) i++;
+      while (
+        i < str.length && str.charCodeAt(i) >= 0x20 && str.charCodeAt(i) <= 0x3f
+      ) i++;
       // Consume the final byte (0x40–0x7e)
       if (i < str.length) i++;
       continue;
@@ -307,7 +309,7 @@ export class QueueTUI {
   }
 
   /** Render the header line. */
-  private renderHeader(columns: number): string {
+  private renderHeader(_columns: number): string {
     const elapsed = formatElapsed(this.startedAt);
     const counts = this.aggregateCounts();
     const name = this.options.queueName ?? "Queue";
