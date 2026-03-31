@@ -12,7 +12,7 @@ provider. The question was whether to rebuild from scratch with a more generic,
 pipeline-oriented architecture — or to fix what's broken and evolve the existing
 modular design.
 
-A competing project (Sandcastle by Matt Pocock) had launched with a different
+A similar project (Sandcastle by Matt Pocock) had launched with a different
 scope — lower-level container/worktree orchestration without task management —
 which prompted reflection on Knox's positioning.
 
