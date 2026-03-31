@@ -170,7 +170,7 @@ features:
   - deno
 prepare: deno install
 check: "deno task check && deno task test:unit"
-dependsOn: [#10, #12]
+dependsOn: ["#10", "#12"]
 ---
 
 ## Parent PRD
@@ -202,8 +202,9 @@ Or "None - can start immediately" if no blockers.
 - Only include frontmatter fields that override the queue defaults from
   `.knox/config.yaml`. If every field matches the defaults, omit the frontmatter
   block entirely.
-- `dependsOn`: unquoted `#N` format inside a YAML array — e.g.,
-  `dependsOn: [#10]` or `dependsOn: [#10, #12]`. Never quote the items.
+- `dependsOn`: quoted `"#N"` format inside a YAML array — e.g.,
+  `dependsOn: ["#10"]` or `dependsOn: ["#10", "#12"]`. Always quote the
+  items because `#` starts a YAML comment when unquoted.
 - All fields (`features`, `prepare`, `check`, `model`, `maxLoops`,
   `dependsOn`) are optional — only include what the task needs.
 
