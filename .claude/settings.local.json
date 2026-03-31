@@ -16,7 +16,8 @@
       "Bash(deno run:*)",
       "Bash(echo \"EXIT_CODE=$?\")",
       "Bash(xargs ls:*)",
-      "Bash(deno fmt:*)"
+      "Bash(deno fmt:*)",
+      "Bash(deno task test:unit\":*)"
     ]
   }
 }

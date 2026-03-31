@@ -166,12 +166,11 @@ entirely.
 
 ```markdown
 ---
-model: opus              # omit if using queue default
-features:                # omit if using queue default
-  - python:3.12
-prepare: "pip install -r requirements.txt"  # omit if using queue default
-check: "pytest"          # omit if using queue default
-maxLoops: 8              # omit if using queue default
+features:
+  - deno
+prepare: deno install
+check: "deno task check && deno task test:unit"
+dependsOn: [#10, #12]
 ---
 
 ## Parent PRD
@@ -192,10 +191,21 @@ rather than duplicating content.>
 
 ## Blocked by
 
-- Blocked by #<issue-number> (if any)
+- Blocked by #10 (short description)
+- Blocked by #12 (short description)
 
 Or "None - can start immediately" if no blockers.
 ```
+
+**Frontmatter rules:**
+
+- Only include frontmatter fields that override the queue defaults from
+  `.knox/config.yaml`. If every field matches the defaults, omit the frontmatter
+  block entirely.
+- `dependsOn`: unquoted `#N` format inside a YAML array — e.g.,
+  `dependsOn: [#10]` or `dependsOn: [#10, #12]`. Never quote the items.
+- All fields (`features`, `prepare`, `check`, `model`, `maxLoops`,
+  `dependsOn`) are optional — only include what the task needs.
 
 **Task description guidelines:**
 

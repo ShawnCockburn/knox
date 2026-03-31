@@ -23,6 +23,14 @@
 | **Environment Config** (new)     | The combination of `features`, `prepare`, and `image` fields that define a Container's environment; exists at both Queue Defaults and per-item level                                        | Env config, runtime config         |
 | **Image Resolver** (new)         | A function used by the Orchestrator to resolve per-item Environment Config to a Docker image ID via the Image Manager                                                                       | Image builder, image factory       |
 
+## Difficulty & Model Selection (new)
+
+| Term                        | Definition                                                                                                                                                      | Aliases to avoid                                        |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| **Difficulty** (new)        | A portable enum (`complex`, `balanced`, `easy`) describing task complexity; the public configuration language for model selection, replacing the former `model` field | Model tier, complexity level                            |
+| **Difficulty Map** (new)    | A fully-keyed mapped type `{ [K in Difficulty]: string }` that maps every Difficulty level to a concrete model string; enforced complete at compile time         | Model map, model config                                 |
+| **Resolve Difficulty** (new)| A function type `(difficulty: Difficulty) => string` injected into the Orchestrator and CLI; the sole contract for turning Difficulty into a concrete model string | Model resolver, difficulty resolver, model mapper       |
+
 ## Agent & Task
 
 | Term                  | Definition                                                                                       | Aliases to avoid                             |
@@ -123,8 +131,8 @@
 | Term                  | Definition                                                                                                                                                 | Aliases to avoid                                                                                   |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
 | **Queue**             | A YAML manifest or directory of Markdown files describing multiple Tasks to be executed, with optional dependencies, groups, concurrency, and defaults     | Batch, job list, task list                                                                         |
-| **Queue Item**        | A single entry in a Queue, consisting of an `id`, a `task` description, and optional overrides for model, features, prepare, image, check, env, etc.       | Task (when referring to the queue entry rather than the work description), job                     |
-| **Queue Defaults**    | Queue-level configuration values (model, maxLoops, features, prepare, env, etc.) that merge with per-item overrides; item values take precedence           | Global config, base config                                                                         |
+| **Queue Item** (updated) | A single entry in a Queue, consisting of an `id`, a `task` description, and optional overrides for difficulty, features, prepare, image, check, env, etc. | Task (when referring to the queue entry rather than the work description), job                     |
+| **Queue Defaults** (updated) | Queue-level configuration values (difficulty, maxLoops, features, prepare, env, etc.) that merge with per-item overrides; item values take precedence  | Global config, base config                                                                         |
 | **Queue State**       | A persistent record of a Queue Run's progress, stored in a `.state.yaml` file alongside the Queue file or inside the queue directory                       | State file (ambiguous with Progress File), checkpoint                                              |
 | **Item Status**       | The lifecycle state of a Queue Item: `pending`, `in_progress`, `completed`, `failed`, or `blocked`                                                         | Status, state (too generic)                                                                        |
 | **Queue Run ID**      | An 8-hex-character identifier for an entire Queue execution, distinct from per-item Run IDs                                                                | Run ID (ambiguous — see flagged ambiguities)                                                       |
@@ -149,7 +157,7 @@
 | **File Queue Source**               | YAML-file-backed implementation of Queue Source; reads from `<name>.yaml`, writes state to `<name>.state.yaml`                                                                                                                                         | YAML loader                                |
 | **Directory Queue Source**          | Markdown-directory-backed implementation of Queue Source; reads `.md` files from a directory, optional `_defaults.yaml` for Queue Defaults, state to `.state.yaml` inside the directory                                                                | Markdown queue source, directory loader    |
 | **Markdown Task Parser**            | Pure function that parses a single Markdown task file into a Queue Item or validation errors                                                                                                                                                           | Task parser, markdown parser               |
-| **Frontmatter** (updated)           | YAML section at the start of a Markdown task file or GitHub Issue body (between `---` delimiters) containing optional Queue Item overrides: `dependsOn`, `model`, `features`, `prepare`, `image`, `check`, `group`, `maxLoops`, `env`, `cpu`, `memory` | YAML header, metadata                      |
+| **Frontmatter** (updated)           | YAML section at the start of a Markdown task file or GitHub Issue body (between `---` delimiters) containing optional Queue Item overrides: `dependsOn`, `difficulty`, `features`, `prepare`, `image`, `check`, `group`, `maxLoops`, `env`, `cpu`, `memory` | YAML header, metadata                      |
 | **Task Body**                       | The Markdown content after Frontmatter; becomes the Queue Item's task description                                                                                                                                                                      | Task content, body text                    |
 | **GitHub Issue Queue Source** (new) | Implementation of Queue Source backed by GitHub Issues labeled `agent/knox`; fetches issues via `gh` CLI, parses bodies with the Markdown Task Parser, and builds a Queue Manifest with dependency graph                                               | GitHub source, issue source, remote source |
 | **GitHub Client** (new)             | Module wrapping all `gh` CLI interactions (list issues, add/remove labels, close issues, ensure labels); accepts a Command Runner for testability                                                                                                      | gh wrapper, GitHub API client              |
@@ -278,6 +286,16 @@
 - Each **Queue Item** produces one **Knox** engine run with its own **Run ID**
 - **Queue Defaults** merge with per-item overrides; item values take precedence
   (for **Environment Config**, per-item fully replaces defaults — no merging)
+- A **Queue Item**'s **Difficulty** (defaulting to `balanced`) is resolved to a
+  concrete model string via the injected **Resolve Difficulty** function before
+  the **Knox** engine is invoked — the engine never sees **Difficulty**, only the
+  resolved model string (new)
+- A **Difficulty Map** is provider-specific (e.g., Claude Code maps `complex` →
+  `opus`, `balanced` → `sonnet`, `easy` → `haiku`); the **Orchestrator** and CLI
+  receive a partially-applied **Resolve Difficulty** function, decoupling them
+  from both the map and the provider (new)
+- **KnoxResult** records both the **Difficulty** (intent) and the resolved model
+  string (what actually ran) for observability (new)
 - The **DAG** is validated at load time: cycles, dangling references, and group
   diamonds are rejected as **Validation Errors**
 - A **Ready Item** is picked by the scheduler when a **Concurrency** slot is
@@ -396,6 +414,14 @@
 > **agent/knox Label** becomes a **Queue Item**. The issue body is parsed
 > through the same **Markdown Task Parser** — put **Frontmatter** at the top for
 > `model`, `dependsOn`, etc., and the rest is the **Task Body**."
+>
+> **Dev:** "How do I control which model runs my tasks without hardcoding
+> provider-specific names?" (new) **Domain expert:** "Use **Difficulty**. Set
+> `difficulty: complex` in **Frontmatter** for hard tasks, or set a
+> queue-wide default in **Queue Defaults**. The **Orchestrator** calls the
+> injected **Resolve Difficulty** function to turn that into a concrete model
+> string — `complex` becomes `opus` for Claude Code. Swap providers and your
+> task configs don't change."
 >
 > **Dev:** "How does Knox identify each issue internally?" **Domain expert:**
 > "The **Issue Mapper** generates an **Item ID** in the format
@@ -548,6 +574,12 @@
   three: **Container Context** (base), **LLM Agent Context** (agent loops), and
   **Shell Context** (shell commands). Do not use "Agent Context" — it no longer
   exists. Use the specific context name for the tier you mean.
+- **"model"** (new): The `model` field has been removed from Queue Item,
+  Queue Defaults, Frontmatter, and CLI flags — replaced by **Difficulty**. The
+  word "model" now refers exclusively to the concrete model string that flows
+  through the engine internals (e.g., `"sonnet"`, `"opus"`). Do not use "model"
+  in configuration or user-facing contexts — use **Difficulty**. If you mean the
+  resolved string, say "model string" or "concrete model."
 - **"item ID" vs "issue number"** (new): A GitHub Issue has both a number
   (`#42`) and an **Item ID** (`gh-42-add-oauth-support`). The number is GitHub's
   identifier; the **Item ID** is Knox's. Use "issue number" for GitHub-facing
