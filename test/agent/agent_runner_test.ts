@@ -1,10 +1,10 @@
 import { assert, assertEquals } from "@std/assert";
 import { AgentRunner } from "../../src/engine/agent/agent_runner.ts";
 import type {
-  AgentContext,
   AgentProvider,
   ContainerHandle,
   InvokeResult,
+  LlmAgentContext,
 } from "../../src/engine/agent/agent_provider.ts";
 import type { ExecResult } from "../../src/shared/types.ts";
 import type { ExecOptions } from "../../src/shared/runtime/container_runtime.ts";
@@ -13,12 +13,12 @@ import type { ExecOptions } from "../../src/shared/runtime/container_runtime.ts"
 // Mock AgentProvider
 // ---------------------------------------------------------------------------
 
-class MockAgentProvider implements AgentProvider {
-  invocations: AgentContext[] = [];
+class MockAgentProvider implements AgentProvider<LlmAgentContext> {
+  invocations: LlmAgentContext[] = [];
   results: InvokeResult[] = [];
   private resultIndex = 0;
 
-  async invoke(ctx: AgentContext): Promise<InvokeResult> {
+  async invoke(ctx: LlmAgentContext): Promise<InvokeResult> {
     this.invocations.push(ctx);
     const result = this.results[this.resultIndex] ?? {
       completed: false,

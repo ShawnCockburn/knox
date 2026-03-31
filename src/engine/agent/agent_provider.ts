@@ -5,7 +5,7 @@ import type {
 import type { ExecResult } from "../../shared/types.ts";
 
 /**
- * Narrow container surface passed to providers via AgentContext.
+ * Narrow container surface passed to providers via context.
  * Providers use this to execute commands, stream output, and copy files
  * into the container — without access to the full ContainerSession.
  */
@@ -18,15 +18,24 @@ export interface ContainerHandle {
   copyIn(hostPath: string, containerPath: string): Promise<void>;
 }
 
-/** Per-invocation context passed from the engine to the provider. */
-export interface AgentContext {
+/** Base context shared by all container providers. */
+export interface ContainerContext {
   container: ContainerHandle;
+  onLine?: (line: string) => void;
+}
+
+/** Context for shell (single-command) invocations. */
+export interface ShellContext extends ContainerContext {
+  command: string;
+}
+
+/** Context for LLM agent loop invocations. */
+export interface LlmAgentContext extends ContainerContext {
   task: string;
   loopNumber: number;
   maxLoops: number;
   checkFailure?: string;
   customPrompt?: string;
-  onLine?: (line: string) => void;
 }
 
 /** Per-invocation options. Extensibility point for future config. */
@@ -39,9 +48,16 @@ export interface InvokeResult {
 }
 
 /**
- * Agent provider interface. Each implementation owns invocation,
- * prompt building, and completion detection for a specific agent binary.
+ * Generic root provider interface. Each implementation owns invocation
+ * and completion detection for a specific container workload.
  */
-export interface AgentProvider {
-  invoke(ctx: AgentContext, options?: InvokeOptions): Promise<InvokeResult>;
+export interface ContainerProvider<TContext extends ContainerContext> {
+  invoke(ctx: TContext, options?: InvokeOptions): Promise<InvokeResult>;
 }
+
+/**
+ * LLM agent provider — marker interface narrowing the generic bound
+ * to LlmAgentContext. No additional methods.
+ */
+export interface AgentProvider<T extends LlmAgentContext = LlmAgentContext>
+  extends ContainerProvider<T> {}

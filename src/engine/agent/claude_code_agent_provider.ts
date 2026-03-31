@@ -1,7 +1,7 @@
 import type {
-  AgentContext,
   AgentProvider,
   InvokeResult,
+  LlmAgentContext,
 } from "./agent_provider.ts";
 import { PromptBuilder } from "../prompt/prompt_builder.ts";
 import { log } from "../../shared/log.ts";
@@ -24,7 +24,7 @@ const PROGRESS_FILE = "knox-progress.txt";
  * Owns prompt building (via PromptBuilder), sentinel detection,
  * progress/git-log reading, and Claude CLI invocation.
  */
-export class ClaudeCodeAgentProvider implements AgentProvider {
+export class ClaudeCodeAgentProvider implements AgentProvider<LlmAgentContext> {
   private readonly model: string;
   private readonly promptBuilder: PromptBuilder;
 
@@ -33,7 +33,7 @@ export class ClaudeCodeAgentProvider implements AgentProvider {
     this.promptBuilder = new PromptBuilder();
   }
 
-  async invoke(ctx: AgentContext): Promise<InvokeResult> {
+  async invoke(ctx: LlmAgentContext): Promise<InvokeResult> {
     const { container, loopNumber } = ctx;
 
     // Gather context
@@ -134,21 +134,21 @@ export class ClaudeCodeAgentProvider implements AgentProvider {
   }
 
   private async readProgressFile(
-    ctx: AgentContext,
+    ctx: LlmAgentContext,
   ): Promise<string | undefined> {
     const result = await ctx.container.exec(["cat", PROGRESS_FILE]);
     if (result.exitCode !== 0) return undefined;
     return result.stdout || undefined;
   }
 
-  private async readGitLog(ctx: AgentContext): Promise<string | undefined> {
+  private async readGitLog(ctx: LlmAgentContext): Promise<string | undefined> {
     const result = await ctx.container.exec(["git", "log", "--oneline"]);
     if (result.exitCode !== 0) return undefined;
     return result.stdout || undefined;
   }
 
   private async writePromptToContainer(
-    ctx: AgentContext,
+    ctx: LlmAgentContext,
     containerPath: string,
     content: string,
   ): Promise<void> {

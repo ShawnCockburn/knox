@@ -1,8 +1,8 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import { ClaudeCodeAgentProvider } from "../../src/engine/agent/claude_code_agent_provider.ts";
 import type {
-  AgentContext,
   ContainerHandle,
+  LlmAgentContext,
 } from "../../src/engine/agent/agent_provider.ts";
 import type { ExecResult } from "../../src/shared/types.ts";
 import type {
@@ -69,8 +69,8 @@ class MockContainerHandle implements ContainerHandle {
 
 function makeContext(
   container: MockContainerHandle,
-  overrides: Partial<AgentContext> = {},
-): AgentContext {
+  overrides: Partial<LlmAgentContext> = {},
+): LlmAgentContext {
   return {
     container,
     task: "Implement feature X",

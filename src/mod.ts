@@ -6,15 +6,20 @@ export type {
   KnoxResult,
 } from "./engine/mod.ts";
 export type {
-  AgentContext,
   AgentProvider,
+  ContainerContext,
   ContainerHandle,
+  ContainerProvider,
   InvokeOptions,
   InvokeResult,
+  LlmAgentContext,
+  ShellContext,
 } from "./engine/mod.ts";
 export { ClaudeCodeAgentProvider } from "./engine/mod.ts";
 export { AgentRunner } from "./engine/mod.ts";
 export type { AgentRunnerOptions, AgentRunnerResult } from "./engine/mod.ts";
+export { ShellProvider } from "./engine/mod.ts";
+export { ShellExecutor } from "./engine/mod.ts";
 export { ContainerSession } from "./engine/mod.ts";
 export type { ContainerSessionOptions } from "./engine/mod.ts";
 export { PromptBuilder } from "./engine/mod.ts";

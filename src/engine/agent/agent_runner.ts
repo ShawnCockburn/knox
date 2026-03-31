@@ -1,4 +1,8 @@
-import type { AgentProvider, ContainerHandle } from "./agent_provider.ts";
+import type {
+  AgentProvider,
+  ContainerHandle,
+  LlmAgentContext,
+} from "./agent_provider.ts";
 import { log } from "../../shared/log.ts";
 import type { KnoxEvent } from "../../shared/types.ts";
 
@@ -8,7 +12,7 @@ const COMMIT_NUDGE_TASK =
   `You have uncommitted changes in the workspace. Review \`git diff\` and \`git status\`, then commit all changes with a meaningful conventional commit message (e.g., feat:, fix:, refactor:). Do NOT make any further code changes — only commit.`;
 
 export interface AgentRunnerOptions {
-  provider: AgentProvider;
+  provider: AgentProvider<LlmAgentContext>;
   container: ContainerHandle;
   task: string;
   maxLoops: number;
@@ -26,7 +30,7 @@ export interface AgentRunnerResult {
 }
 
 export class AgentRunner {
-  private provider: AgentProvider;
+  private provider: AgentProvider<LlmAgentContext>;
   private container: ContainerHandle;
   private options: AgentRunnerOptions;
 

@@ -35,15 +35,20 @@
 | **Completion Signal** | The sentinel string `KNOX_COMPLETE` output by the Agent to indicate the Task is finished         | Done marker, exit signal                     |
 | **Progress File**     | The persistent file `knox-progress.txt` inside the Container that carries context across Loops   | State file, log file, memory file            |
 
-## Agent Provider (new)
+## Container Provider Hierarchy (updated)
 
-| Term                                 | Definition                                                                                                                                                   | Aliases to avoid                                            |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
-| **Agent Provider** (new)             | Interface that each agent implementation must satisfy; owns invocation, prompt building, and completion detection for a specific agent binary                | Provider (too generic), agent adapter                       |
-| **Container Handle** (new)           | Narrow container surface (`exec`, `execStream`, `copyIn`) passed to Agent Providers via Agent Context; a subset of Container Session's full interface        | Container (when referring to this interface), session proxy |
-| **Agent Context** (new)              | Per-invocation context passed from the Agent Runner to the Agent Provider: container handle, task, loop number, max loops, and optional overrides            | Invoke context, loop context                                |
-| **Invoke Result** (new)              | Return type from an Agent Provider invocation, containing `completed` (boolean) and `exitCode` (number)                                                      | Agent result, loop result                                   |
-| **Claude Code Agent Provider** (new) | Agent Provider implementation for Claude Code; owns the Claude CLI path, sentinel detection, prompt building via PromptBuilder, and progress/git-log reading | Claude provider, CC provider                                |
+| Term                           | Definition                                                                                                                                                      | Aliases to avoid                                            |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| **Container Provider** (new)   | Generic root interface (`ContainerProvider<TContext>`) for any workload that runs inside a Container; parameterized by context type                             | Provider (too generic)                                      |
+| **Agent Provider** (updated)   | Marker interface extending Container Provider, narrowing the context to LLM Agent Context; the interface LLM agent implementations must satisfy                 | Provider (too generic), agent adapter                       |
+| **Container Handle**           | Narrow container surface (`exec`, `execStream`, `copyIn`) passed to providers via context; a subset of Container Session's full interface                       | Container (when referring to this interface), session proxy |
+| **Container Context** (new)    | Base per-invocation context shared by all Container Providers: contains `container` (Container Handle) and optional `onLine` callback                           | Base context                                                |
+| **LLM Agent Context** (new)    | Per-invocation context for LLM agent loops, extending Container Context: adds `task`, `loopNumber`, `maxLoops`, `checkFailure?`, `customPrompt?`                | Agent Context (old name), invoke context, loop context      |
+| **Shell Context** (new)        | Per-invocation context for shell commands, extending Container Context: adds `command` (the shell command string)                                               | Command context, exec context                               |
+| **Invoke Result**              | Return type from any Container Provider invocation, containing `completed` (boolean) and `exitCode` (number); shared by both LLM and shell tiers                | Agent result, loop result                                   |
+| **Claude Code Agent Provider** | Agent Provider implementation for Claude Code; owns the Claude CLI path, sentinel detection, prompt building via PromptBuilder, and progress/git-log reading    | Claude provider, CC provider                                |
+| **Shell Provider** (new)       | Container Provider implementation for shell commands; runs `sh -c <command>` via `execStream`, streams output through `onLine`, maps exit code to Invoke Result | Command provider, exec provider                             |
+| **Shell Executor** (new)       | Orchestration counterpart to Agent Runner for shell jobs; invokes a Container Provider exactly once — no loop, no retry, no Check Command, no Commit Nudge      | Shell runner, command runner (ambiguous with queue concept) |
 
 ## Run Identity
 
@@ -104,14 +109,14 @@
 
 ## Single-Run Orchestration
 
-| Term                       | Definition                                                                                                                                                                                                                      | Aliases to avoid                                 |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| **Knox**                   | The single-run engine that coordinates a Container Session, Agent Runner, bundle extraction, and result sinking for one Task                                                                                                    | Runner, executor (when meaning the whole system) |
-| **Knox Outcome**           | A discriminated union result from a Knox engine run: `{ ok: true, result }` or `{ ok: false, error, phase }`                                                                                                                    | Result (ambiguous with KnoxResult)               |
-| **Preflight Check**        | A validation run before execution: Docker available, Credentials present, source directory exists, dirty working tree warning                                                                                                   | Pre-check, startup validation                    |
-| **Container Session**      | A deep module that owns the entire lifecycle of a sandboxed Container: creation, workspace setup, command execution, result extraction, and cleanup                                                                             | Session, sandbox context                         |
-| **Agent Runner** (updated) | A provider-agnostic loop orchestrator that accepts an Agent Provider and Container Handle; owns retry/backoff, Check Command verification, and Commit Nudge — delegates per-loop execution to the Agent Provider via `invoke()` | Loop executor, agent loop                        |
-| **Image Manager**          | The module that builds the Base Image, installs Features, runs Prepare Commands, and caches the resulting images                                                                                                                | Builder, image builder                           |
+| Term                       | Definition                                                                                                                                                                                                                                       | Aliases to avoid                                 |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
+| **Knox**                   | The single-run engine that coordinates a Container Session, Agent Runner, bundle extraction, and result sinking for one Task                                                                                                                     | Runner, executor (when meaning the whole system) |
+| **Knox Outcome**           | A discriminated union result from a Knox engine run: `{ ok: true, result }` or `{ ok: false, error, phase }`                                                                                                                                     | Result (ambiguous with KnoxResult)               |
+| **Preflight Check**        | A validation run before execution: Docker available, Credentials present, source directory exists, dirty working tree warning                                                                                                                    | Pre-check, startup validation                    |
+| **Container Session**      | A deep module that owns the entire lifecycle of a sandboxed Container: creation, workspace setup, command execution, result extraction, and cleanup                                                                                              | Session, sandbox context                         |
+| **Agent Runner** (updated) | Loop orchestrator that accepts an Agent Provider (not the generic Container Provider) and Container Handle; owns retry/backoff, Check Command verification, and Commit Nudge — delegates per-loop execution to the Agent Provider via `invoke()` | Loop executor, agent loop                        |
+| **Image Manager**          | The module that builds the Base Image, installs Features, runs Prepare Commands, and caches the resulting images                                                                                                                                 | Builder, image builder                           |
 
 ## Queue Orchestration
 
@@ -211,12 +216,20 @@
 - A **Container Session** hides all container plumbing: creation, source copy,
   ownership, network restriction, git verification, exclude setup, bundle
   extraction, and cleanup
+- A **Container Provider** is the generic root; **Agent Provider** and **Shell
+  Provider** are sibling branches beneath it, each with their own context type
+  (updated)
 - An **Agent Runner** takes an **Agent Provider** and a **Container Handle** and
   produces an **AgentRunnerResult** (completed, loopsRun, autoCommitted)
   (updated)
 - An **Agent Runner** is provider-agnostic — it delegates per-loop execution to
   the **Agent Provider** via `invoke()` and uses the **Container Handle** only
   for Check Commands, dirty-tree checks, and Auto-Commit (updated)
+- A **Shell Executor** takes a **Container Provider** (scoped to **Shell
+  Context**) and a **Container Handle**, invokes the provider exactly once, and
+  returns the **Invoke Result** unchanged (new)
+- A **Shell Provider** runs `sh -c <command>` via `execStream` and maps the exit
+  code: 0 → `completed: true`, non-zero → `completed: false` (new)
 - A **Container Session** exposes a **Container Handle** via
   `toContainerHandle()` — a narrow adapter over its `exec`, `execStream`, and
   `copyIn` methods (new)
@@ -514,20 +527,27 @@
   the **agent/knox Label** (user-managed, Knox read-only) and **Knox Labels**
   (Knox-managed, auto-created). Do not call all of them "Knox labels" — the
   **agent/knox Label** is explicitly outside Knox's write domain.
-- **"provider"** (new): The codebase now has four "provider" types: **Agent
-  Provider** (agent binary abstraction), **Source Provider** (git cloning),
+- **"provider"** (updated): The codebase now has five "provider" types:
+  **Container Provider** (generic root interface), **Agent Provider** (LLM agent
+  marker extending Container Provider), **Source Provider** (git cloning),
   **Credential Provider** (auth), and **Feature Provider** (in Feature
-  Registry). Never use "provider" unqualified — always say the full term.
+  Registry). Never use "provider" unqualified — always say the full term. In
+  particular, **Shell Provider** is a **Container Provider**, not an **Agent
+  Provider** — the two are siblings, not parent-child.
 - **"handle" vs "session"** (new): A **Container Handle** is a narrow,
   provider-facing interface (`exec`, `execStream`, `copyIn`). A **Container
   Session** is the full lifecycle manager (creation, network restriction, bundle
   extraction, disposal). The handle is a subset exposed via
   `toContainerHandle()`. Do not use "session" when you mean the handle, or vice
   versa.
-- **"invoke" vs "run"** (new): `invoke()` is a single Agent Provider call (one
-  loop iteration or one nudge). `run()` is the Agent Runner's outer loop across
-  all iterations. Do not say "invoke" when describing the full multi-loop
-  execution.
+- **"invoke" vs "run"** (updated): `invoke()` is a single Container Provider
+  call (one loop iteration, one nudge, or one shell command). `run()` is the
+  outer method on Agent Runner (multi-loop) or Shell Executor (single-shot). Do
+  not say "invoke" when describing the full multi-loop execution.
+- **"Agent Context"** (new): The old `AgentContext` type has been split into
+  three: **Container Context** (base), **LLM Agent Context** (agent loops), and
+  **Shell Context** (shell commands). Do not use "Agent Context" — it no longer
+  exists. Use the specific context name for the tier you mean.
 - **"item ID" vs "issue number"** (new): A GitHub Issue has both a number
   (`#42`) and an **Item ID** (`gh-42-add-oauth-support`). The number is GitHub's
   identifier; the **Item ID** is Knox's. Use "issue number" for GitHub-facing
