@@ -30,6 +30,7 @@ export interface KnoxEngineOptions {
   check?: string;
   cpuLimit?: string;
   memoryLimit?: string;
+  projectSetup?: string;
   onLine?: (line: string) => void;
   onEvent?: (event: KnoxEvent) => void;
   signal?: AbortSignal;
@@ -91,6 +92,7 @@ export class Knox {
       check,
       cpuLimit,
       memoryLimit,
+      projectSetup,
       onLine,
       onEvent,
       signal,
@@ -177,6 +179,7 @@ export class Knox {
           sourceProvider,
           cpuLimit,
           memoryLimit,
+          projectSetup,
         });
         log.debug(`[knox] Container session created: ${session.containerId}`);
         emit({ type: "container:created", containerId: session.containerId });

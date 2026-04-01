@@ -17,7 +17,9 @@
       "Bash(echo \"EXIT_CODE=$?\")",
       "Bash(xargs ls:*)",
       "Bash(deno fmt:*)",
-      "Bash(deno task test:unit\":*)"
+      "Bash(deno task test:unit\":*)",
+      "Bash(find /Users/shawn/Projects/knox/test -type f -path */agent/* -o -path */source/* -o -path */sink/*)",
+      "Bash(grep -E \"\\\\.ts$\")"
     ]
   }
 }

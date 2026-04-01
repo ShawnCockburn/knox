@@ -31,7 +31,7 @@ import type { QueueDefaults } from "../queue/types.ts";
 
 /**
  * Resolve queue defaults environment config to a Docker image.
- * Handles features, prepare, image, and legacy setup rejection.
+ * Handles features, envSetup, and image.
  */
 async function resolveDefaultsImage(
   defaults: QueueDefaults | undefined,
@@ -44,7 +44,7 @@ async function resolveDefaultsImage(
   if (defaults.image) {
     return await imageManager.ensureCustomImage({
       image: defaults.image,
-      prepare: defaults.prepare,
+      envSetup: defaults.envSetup,
     });
   }
 
@@ -65,7 +65,7 @@ async function resolveDefaultsImage(
 
   return await imageManager.ensureFeatureImage({
     features: resolvedFeatures,
-    prepare: defaults.prepare,
+    envSetup: defaults.envSetup,
   });
 }
 
@@ -79,7 +79,7 @@ function createImageResolver(
     if (env.image) {
       return await imageManager.ensureCustomImage({
         image: env.image,
-        prepare: env.prepare,
+        envSetup: env.envSetup,
       });
     }
 
@@ -99,7 +99,7 @@ function createImageResolver(
 
     return await imageManager.ensureFeatureImage({
       features: resolvedFeatures,
-      prepare: env.prepare,
+      envSetup: env.envSetup,
     });
   };
 }
@@ -122,7 +122,8 @@ Options:
   --dir <dir>         Source directory (default: .)
   --model <model>     Claude model (default: sonnet)
   --features <list>   Features to install (e.g., "python:3.12,deno")
-  --prepare <cmd>     Prepare command to run with network (e.g., "pip install flask")
+  --env-setup <cmd>   Environment setup command cached in Docker image (e.g., "apt-get install -y jq")
+  --project-setup <cmd> Project setup command run after source copy (e.g., "deno install")
   --image <name>      Custom Docker image (mutually exclusive with --features)
   --check <cmd>       Verification command (e.g., "npm test")
   --max-loops <n>     Maximum loop iterations (default: 10)
@@ -621,7 +622,8 @@ if (effectiveCommand === "init") {
       "dir",
       "model",
       "features",
-      "prepare",
+      "env-setup",
+      "project-setup",
       "image",
       "prompt",
       "check",
@@ -634,14 +636,6 @@ if (effectiveCommand === "init") {
     collect: ["env"],
     default: { dir: ".", model: "sonnet", "max-loops": "10" },
   });
-
-  // Reject legacy --setup flag
-  if ((flags as Record<string, unknown>).setup !== undefined) {
-    console.error(
-      "Error: The `--setup` flag has been renamed to `--prepare`. Please update your command.",
-    );
-    Deno.exit(2);
-  }
 
   // Validate mutual exclusivity
   if (flags.features && flags.image) {
@@ -724,7 +718,7 @@ if (effectiveCommand === "init") {
     if (flags.image) {
       image = await imageManager.ensureCustomImage({
         image: flags.image as string,
-        prepare: flags.prepare as string | undefined,
+        envSetup: flags["env-setup"] as string | undefined,
       });
     } else {
       // Resolve features if specified
@@ -746,7 +740,7 @@ if (effectiveCommand === "init") {
       }
       image = await imageManager.ensureFeatureImage({
         features: resolvedFeatures,
-        prepare: flags.prepare as string | undefined,
+        envSetup: flags["env-setup"] as string | undefined,
       });
     }
     log.debug(`Image ready: ${image}`);
@@ -783,6 +777,7 @@ if (effectiveCommand === "init") {
       check: flags.check as string | undefined,
       cpuLimit: flags.cpu as string | undefined,
       memoryLimit: flags.memory as string | undefined,
+      projectSetup: flags["project-setup"] as string | undefined,
       onLine: (line) => console.log(line),
       signal: controller.signal,
       runtime,

@@ -36,6 +36,7 @@ export interface LlmAgentContext extends ContainerContext {
   maxLoops: number;
   checkFailure?: string;
   customPrompt?: string;
+  signal?: AbortSignal;
 }
 
 /** Per-invocation options. Extensibility point for future config. */

@@ -302,4 +302,98 @@ Deno.test("ContainerSession", async (t) => {
 
     await session.dispose();
   });
+
+  await t.step(
+    "projectSetup runs after chown and before restrictNetwork",
+    async () => {
+      const runtime = new MockRuntime();
+      // chown, projectSetup, git check, exclude
+      runtime.execResults = [
+        { exitCode: 0, stdout: "", stderr: "" }, // chown
+        { exitCode: 0, stdout: "", stderr: "" }, // projectSetup
+        { exitCode: 0, stdout: ".git", stderr: "" }, // git rev-parse
+        { exitCode: 0, stdout: "", stderr: "" }, // exclude printf
+      ];
+
+      const session = await ContainerSession.create({
+        ...createOptions(runtime),
+        projectSetup: "deno install",
+      });
+
+      const methods = runtime.calls.map((c) => c.method);
+      assertEquals(methods, [
+        "createContainer",
+        "copyIn",
+        "exec", // chown
+        "exec", // projectSetup
+        "restrictNetwork",
+        "exec", // git rev-parse
+        "exec", // exclude printf
+      ]);
+
+      // projectSetup exec has no user override (runs as knox user)
+      const projectSetupCall = runtime.callsTo("exec")[1];
+      const cmd = projectSetupCall.args[1] as string[];
+      assertEquals(cmd, ["sh", "-c", "deno install"]);
+      const opts = projectSetupCall.args[2] as {
+        workdir: string;
+        user?: string;
+      };
+      assertEquals(opts.workdir, "/workspace");
+      assertEquals(opts.user, undefined);
+
+      await session.dispose();
+    },
+  );
+
+  await t.step(
+    "omitting projectSetup preserves original call sequence",
+    async () => {
+      const runtime = new MockRuntime();
+      runtime.execResults = [
+        { exitCode: 0, stdout: "", stderr: "" }, // chown
+        { exitCode: 0, stdout: ".git", stderr: "" }, // git rev-parse
+        { exitCode: 0, stdout: "", stderr: "" }, // exclude printf
+      ];
+
+      const session = await ContainerSession.create(createOptions(runtime));
+
+      const methods = runtime.calls.map((c) => c.method);
+      assertEquals(methods, [
+        "createContainer",
+        "copyIn",
+        "exec", // chown
+        "restrictNetwork",
+        "exec", // git rev-parse
+        "exec", // exclude printf
+      ]);
+
+      await session.dispose();
+    },
+  );
+
+  await t.step(
+    "projectSetup failure throws and cleans up container",
+    async () => {
+      const runtime = new MockRuntime();
+      runtime.execResults = [
+        { exitCode: 0, stdout: "", stderr: "" }, // chown
+        { exitCode: 1, stdout: "", stderr: "setup failed" }, // projectSetup FAILS
+      ];
+
+      await assertRejects(
+        () =>
+          ContainerSession.create({
+            ...createOptions(runtime),
+            projectSetup: "npm install",
+          }),
+        Error,
+        "projectSetup command failed",
+      );
+
+      // Container should have been cleaned up
+      const removeCalls = runtime.callsTo("remove");
+      assertEquals(removeCalls.length, 1);
+    },
+  );
 });

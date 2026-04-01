@@ -13,6 +13,8 @@ export interface ExecOptions {
   env?: string[];
   /** User to run as (e.g., "root"). Defaults to the image's USER. */
   user?: string;
+  /** Abort signal — kills the child process when fired. */
+  signal?: AbortSignal;
 }
 
 /** Callback for streaming exec output line by line. */

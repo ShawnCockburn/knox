@@ -331,7 +331,12 @@ Deno.test("ClaudeCodeAgentProvider", async (t) => {
       makeContext(container, { onLine: (line) => lines.push(line) }),
     );
 
-    assertEquals(lines, ["line-one", "line-two"]);
+    assertEquals(lines, [
+      "[knox] Loop 1: invoking claude (model=sonnet)",
+      "line-one",
+      "line-two",
+      "[knox] Loop 1: claude exited (code=0, completed=false)",
+    ]);
   });
 
   await t.step("streams stderr with prefix to onLine callback", async () => {
@@ -346,6 +351,10 @@ Deno.test("ClaudeCodeAgentProvider", async (t) => {
       makeContext(container, { onLine: (line) => lines.push(line) }),
     );
 
-    assertEquals(lines, ["[stderr] warning"]);
+    assertEquals(lines, [
+      "[knox] Loop 1: invoking claude (model=sonnet)",
+      "[stderr] warning",
+      "[knox] Loop 1: claude exited (code=0, completed=false)",
+    ]);
   });
 });

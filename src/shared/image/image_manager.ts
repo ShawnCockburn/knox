@@ -9,13 +9,13 @@ const BASE_IMAGE_TAG = "knox-agent:latest";
 /** Options for building a feature-based image. */
 export interface FeatureImageOptions {
   features?: ResolvedFeature[];
-  prepare?: string;
+  envSetup?: string;
 }
 
-/** Options for building a custom image with optional prepare. */
+/** Options for building a custom image with optional envSetup. */
 export interface CustomImageOptions {
   image: string;
-  prepare?: string;
+  envSetup?: string;
 }
 
 export class ImageManager {
@@ -42,18 +42,18 @@ export class ImageManager {
   }
 
   /**
-   * Build pipeline: base image → features (alphabetical) → prepare → commit + cache.
-   * Returns the base image if no features or prepare are specified.
+   * Build pipeline: base image → features (alphabetical) → envSetup → commit + cache.
+   * Returns the base image if no features or envSetup are specified.
    */
   async ensureFeatureImage(options: FeatureImageOptions): Promise<ImageId> {
     const baseImage = await this.ensureBaseImage();
-    const { features, prepare } = options;
+    const { features, envSetup } = options;
 
-    if ((!features || features.length === 0) && !prepare) {
+    if ((!features || features.length === 0) && !envSetup) {
       return baseImage;
     }
 
-    const cacheTag = await this.computeFeatureCacheTag(features, prepare);
+    const cacheTag = await this.computeFeatureCacheTag(features, envSetup);
     if (await this.runtime.imageExists(cacheTag)) {
       return cacheTag;
     }
@@ -96,17 +96,17 @@ export class ImageManager {
         }
       }
 
-      // Run prepare command
-      if (prepare) {
+      // Run envSetup command
+      if (envSetup) {
         const result = await this.runtime.exec(
           containerId,
-          ["sh", "-c", prepare],
+          ["sh", "-c", envSetup],
           { workdir: "/workspace", user: "root" },
         );
 
         if (result.exitCode !== 0) {
           throw new Error(
-            `Prepare command failed (exit ${result.exitCode}): ${result.stderr}`,
+            `envSetup command failed (exit ${result.exitCode}): ${result.stderr}`,
           );
         }
       }
@@ -115,7 +115,7 @@ export class ImageManager {
       const featureNames = features?.map((f) => `${f.name}:${f.version}`) ?? [];
       const message = [
         ...featureNames.map((f) => `feature: ${f}`),
-        ...(prepare ? [`prepare: ${prepare}`] : []),
+        ...(envSetup ? [`envSetup: ${envSetup}`] : []),
       ].join(", ");
 
       await this.runtime.commit({
@@ -132,18 +132,18 @@ export class ImageManager {
   }
 
   /**
-   * Build an image from a custom base image with optional prepare command.
-   * If no prepare, returns the image directly (no caching).
-   * If prepare specified, runs it and caches the result.
+   * Build an image from a custom base image with optional envSetup command.
+   * If no envSetup, returns the image directly (no caching).
+   * If envSetup specified, runs it and caches the result.
    */
   async ensureCustomImage(options: CustomImageOptions): Promise<ImageId> {
-    const { image, prepare } = options;
+    const { image, envSetup } = options;
 
-    if (!prepare) {
+    if (!envSetup) {
       return image;
     }
 
-    const cacheTag = await this.computeCustomImageCacheTag(image, prepare);
+    const cacheTag = await this.computeCustomImageCacheTag(image, envSetup);
     if (await this.runtime.imageExists(cacheTag)) {
       return cacheTag;
     }
@@ -157,20 +157,20 @@ export class ImageManager {
     try {
       const result = await this.runtime.exec(
         containerId,
-        ["sh", "-c", prepare],
+        ["sh", "-c", envSetup],
         { workdir: "/workspace", user: "root" },
       );
 
       if (result.exitCode !== 0) {
         throw new Error(
-          `Prepare command failed (exit ${result.exitCode}): ${result.stderr}`,
+          `envSetup command failed (exit ${result.exitCode}): ${result.stderr}`,
         );
       }
 
       await this.runtime.commit({
         container: containerId,
         tag: cacheTag,
-        message: `knox custom-image: ${image} + prepare: ${prepare}`,
+        message: `knox custom-image: ${image} + envSetup: ${envSetup}`,
       });
 
       return cacheTag;
@@ -188,19 +188,9 @@ export class ImageManager {
     return await this.runtime.removeImagesByPrefix("knox-cache:");
   }
 
-  /**
-   * Legacy: Run setup commands in a networked container and cache the result.
-   * @deprecated Use ensureFeatureImage instead.
-   */
-  async ensureSetupImage(setupCommand?: string): Promise<ImageId> {
-    return await this.ensureFeatureImage({
-      prepare: setupCommand,
-    });
-  }
-
   private async computeFeatureCacheTag(
     features?: ResolvedFeature[],
-    prepare?: string,
+    envSetup?: string,
   ): Promise<string> {
     const dockerfileContent = await Deno.readTextFile(
       join(dirname(fromFileUrl(import.meta.url)), "Dockerfile"),
@@ -215,8 +205,8 @@ export class ImageManager {
       }
     }
 
-    if (prepare) {
-      parts.push(`prepare:${prepare}`);
+    if (envSetup) {
+      parts.push(`envSetup:${envSetup}`);
     }
 
     const input = parts.join("\n---\n");
@@ -230,9 +220,9 @@ export class ImageManager {
 
   private async computeCustomImageCacheTag(
     image: string,
-    prepare: string,
+    envSetup: string,
   ): Promise<string> {
-    const input = `custom:${image}\n---\nprepare:${prepare}`;
+    const input = `custom:${image}\n---\nenvSetup:${envSetup}`;
     const hash = await crypto.subtle.digest(
       "SHA-256",
       new TextEncoder().encode(input),

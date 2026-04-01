@@ -131,32 +131,51 @@ export class DockerRuntime implements ContainerRuntime {
     log.debug(`docker ${args.join(" ")} (streaming)`);
     const cmd = new Deno.Command("docker", {
       args,
+      stdin: "null",
       stdout: "piped",
       stderr: "piped",
     });
     const child = cmd.spawn();
 
-    const readStream = async (
-      stream: ReadableStream<Uint8Array>,
-      name: "stdout" | "stderr",
-    ) => {
-      const lines = stream
-        .pipeThrough(new TextDecoderStream())
-        .pipeThrough(new TextLineStream());
-      for await (const line of lines) {
-        // Strip \r added by the PTY
-        options.onLine(line.replace(/\r$/, ""), name);
+    // Kill the child process when the abort signal fires.
+    const onAbort = () => {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // Process may have already exited.
       }
     };
+    if (options.signal?.aborted) {
+      onAbort();
+    } else {
+      options.signal?.addEventListener("abort", onAbort, { once: true });
+    }
 
-    await Promise.all([
-      readStream(child.stdout, "stdout"),
-      readStream(child.stderr, "stderr"),
-    ]);
+    try {
+      const readStream = async (
+        stream: ReadableStream<Uint8Array>,
+        name: "stdout" | "stderr",
+      ) => {
+        const lines = stream
+          .pipeThrough(new TextDecoderStream())
+          .pipeThrough(new TextLineStream());
+        for await (const line of lines) {
+          // Strip \r added by the PTY
+          options.onLine(line.replace(/\r$/, ""), name);
+        }
+      };
 
-    const status = await child.status;
-    log.debug(`execStream exit=${status.code}`);
-    return status.code;
+      await Promise.all([
+        readStream(child.stdout, "stdout"),
+        readStream(child.stderr, "stderr"),
+      ]);
+
+      const status = await child.status;
+      log.debug(`execStream exit=${status.code}`);
+      return status.code;
+    } finally {
+      options.signal?.removeEventListener("abort", onAbort);
+    }
   }
 
   async restrictNetwork(

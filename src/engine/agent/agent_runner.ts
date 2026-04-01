@@ -64,6 +64,7 @@ export class AgentRunner {
         maxLoops: this.options.maxLoops,
       });
 
+      this.options.onLine?.(`[knox] Starting loop ${loop}/${this.options.maxLoops}`);
       log.info(`Starting loop: ${loop}`);
       const result = await this.runOneLoopWithRetry(loop, checkFailure);
       log.debug(
@@ -89,6 +90,7 @@ export class AgentRunner {
           );
 
           if (checkResult.exitCode !== 0) {
+            this.options.onLine?.(`[knox] Check command failed (loop ${loop})`);
             log.warn("Post loop check failed");
             log.debug(
               `[agent] Check stdout: ${checkResult.stdout.slice(0, 500)}`,
@@ -104,6 +106,7 @@ export class AgentRunner {
             });
             continue;
           }
+          this.options.onLine?.(`[knox] Check command passed (loop ${loop})`);
           log.warn("Post loop check success");
         }
 
@@ -148,6 +151,7 @@ export class AgentRunner {
         loopNumber: 0,
         maxLoops: 0,
         onLine: this.options.onLine,
+        signal: this.options.signal,
       });
     } catch (e) {
       log.debug(`[agent] Nudge failed: ${e instanceof Error ? e.message : e}`);
@@ -192,6 +196,7 @@ export class AgentRunner {
           checkFailure,
           customPrompt: this.options.customPrompt,
           onLine: this.options.onLine,
+          signal: this.options.signal,
         });
 
         if (result.exitCode !== 0 && attempt < MAX_RETRIES) {

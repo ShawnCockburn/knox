@@ -94,12 +94,14 @@ export class ClaudeCodeAgentProvider implements AgentProvider<LlmAgentContext> {
     const stderrLines: string[] = [];
     const claudeCmd =
       `${CLAUDE_BIN} -p --dangerously-skip-permissions --model ${this.model} < ${PROMPT_PATH}`;
+    ctx.onLine?.(`[knox] Loop ${loopNumber}: invoking claude (model=${this.model})`);
     log.debug(
       `[claude-provider] Loop ${loopNumber}: executing claude: ${claudeCmd}`,
     );
     const exitCode = await container.execStream(
       ["sh", "-c", claudeCmd],
       {
+        signal: ctx.signal,
         onLine: (line, stream) => {
           if (stream === "stdout") {
             if (line.includes(SENTINEL)) {
@@ -114,6 +116,7 @@ export class ClaudeCodeAgentProvider implements AgentProvider<LlmAgentContext> {
       },
     );
 
+    ctx.onLine?.(`[knox] Loop ${loopNumber}: claude exited (code=${exitCode}, completed=${completed})`);
     log.debug(
       `[claude-provider] Loop ${loopNumber}: claude exited with code ${exitCode}, completed=${completed}`,
     );

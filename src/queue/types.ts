@@ -14,7 +14,7 @@ export type FeatureConfigEntry = string | Record<string, string>;
 /** Environment configuration for a queue item or defaults. */
 export interface EnvironmentConfig {
   readonly features?: FeatureConfigEntry[];
-  readonly prepare?: string;
+  readonly envSetup?: string;
   readonly image?: string;
 }
 
@@ -31,6 +31,7 @@ export interface QueueItem extends EnvironmentConfig {
   readonly prompt?: string;
   readonly cpu?: string;
   readonly memory?: string;
+  readonly projectSetup?: string;
 }
 
 /** Queue-level defaults that merge with per-item overrides. */
@@ -42,6 +43,7 @@ export interface QueueDefaults extends EnvironmentConfig {
   readonly prompt?: string;
   readonly cpu?: string;
   readonly memory?: string;
+  readonly projectSetup?: string;
 }
 
 /** The full queue manifest loaded from a queue file. */

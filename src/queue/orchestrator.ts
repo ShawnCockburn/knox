@@ -295,16 +295,19 @@ export class Orchestrator {
       customPrompt = await Deno.readTextFile(promptPath);
     }
 
+    // Resolve projectSetup from item or defaults
+    const projectSetup = item.projectSetup ?? defaults.projectSetup;
+
     // Resolve per-item environment → image
-    // If item declares features/prepare/image, it replaces defaults entirely (no merge)
+    // If item declares features/envSetup/image, it replaces defaults entirely (no merge)
     const itemHasEnv = item.features !== undefined ||
-      item.prepare !== undefined ||
+      item.envSetup !== undefined ||
       item.image !== undefined;
     let itemImage = this.options.image; // default
     if (itemHasEnv && this.options.imageResolver) {
       itemImage = await this.options.imageResolver({
         features: item.features,
-        prepare: item.prepare,
+        envSetup: item.envSetup,
         image: item.image,
       });
     }
@@ -353,6 +356,7 @@ export class Orchestrator {
       check,
       cpuLimit: cpu,
       memoryLimit: memory,
+      projectSetup,
       onLine,
       onEvent,
       signal,

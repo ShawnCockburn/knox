@@ -8,7 +8,7 @@
 | **Container Runtime**      | Abstract interface for container operations (build, exec, copy, restrict network)                                                                                                | Docker (when referring to the abstraction)  |
 | **Workspace**              | The `/workspace` directory inside the Container where source code lives and the Agent works                                                                                      | Workdir, working directory                  |
 | **Base Image**             | The Knox-built Docker image (`knox-agent:latest`) containing Ubuntu 24.04, git, curl, and Claude Code isolated at `/opt/claude/` — no user-facing runtimes                       | Image (ambiguous — see flagged ambiguities) |
-| **Cached Image** (updated) | A Docker image tagged `knox-cache:<hash>` produced by running Features and/or a Prepare Command on the Base Image or Custom Image; the cache key is a SHA-256 hash of all inputs | Setup Image, cache image                    |
+| **Cached Image** (updated) | A Docker image tagged `knox-cache:<hash>` produced by running Features and/or an Env Setup command on the Base Image or Custom Image; the cache key is a SHA-256 hash of all inputs | Setup Image, cache image                    |
 
 ## Container Environment (new)
 
@@ -20,7 +20,7 @@
 | **Feature Install Script** (new) | The `install.sh` file inside a Feature directory; receives version as first argument, runs as root, must be idempotent, exits non-zero on failure                                           | Install script, setup script       |
 | **Resolved Feature** (new)       | A Feature after validation and version resolution: contains name, version, install script path, and install script content; ready for image building                                        | Parsed feature, validated feature  |
 | **Custom Image** (new)           | A user-provided Docker image specified via the `image:` field; mutually exclusive with Features                                                                                             | External image, user image         |
-| **Environment Config** (new)     | The combination of `features`, `prepare`, and `image` fields that define a Container's environment; exists at both Queue Defaults and per-item level                                        | Env config, runtime config         |
+| **Environment Config** (updated) | The combination of `features`, `envSetup`, and `image` fields that define a Container's image-level environment; exists at both Queue Defaults and per-item level; does not include Project Setup | Env config, runtime config         |
 | **Image Resolver** (new)         | A function used by the Orchestrator to resolve per-item Environment Config to a Docker image ID via the Image Manager                                                                       | Image builder, image factory       |
 
 ## Difficulty & Model Selection (new)
@@ -92,13 +92,14 @@
 | **Commit Nudge** (updated) | A regular `invoke()` call through the Agent Provider with a commit instruction as the task; the Agent Runner checks for a dirty tree via the Container Handle, not a dedicated method | Commit reminder, commit retry  |
 | **Auto-Commit**            | A mechanical `git add -A && git commit` performed by Knox as a last resort when the Agent fails to commit after a Commit Nudge                                                        | Fallback commit, safety commit |
 
-## Two-Phase Execution
+## Setup Hooks & Network (updated)
 
-| Term                          | Definition                                                                                                                                                                                     | Aliases to avoid                                            |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| **Prepare Command** (updated) | An optional user-provided command (e.g., `pip install -r requirements.txt`) run with network access after Features are installed but before the Agent phase; replaces the former `setup` field | Setup command, install command, init command                |
-| **Egress Filtering**          | Network restriction allowing only HTTPS to Anthropic API endpoints and DNS; applied via iptables                                                                                               | Air-gapped (inaccurate — DNS and API are allowed), firewall |
-| **Allowed IPs**               | The set of resolved IP addresses for Anthropic API endpoints that Egress Filtering permits                                                                                                     | Whitelist                                                   |
+| Term                          | Definition                                                                                                                                                                                                 | Aliases to avoid                                                                   |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| **Env Setup** (new)           | An optional user-provided command run during image building, after Features are installed; no source code available, runs as root, result cached in Docker image; for environment-level setup              | Prepare command, setup command, install command                                     |
+| **Project Setup** (new)       | An optional user-provided command run inside the Container after source is copied in but before Egress Filtering; has full network and source tree, runs as the knox user, not cached; for project-specific dependency installation | Prepare command, warmup, install command                                           |
+| **Egress Filtering**          | Network restriction allowing only HTTPS to Anthropic API endpoints and DNS; applied via iptables                                                                                                           | Air-gapped (inaccurate — DNS and API are allowed), firewall                        |
+| **Allowed IPs**               | The set of resolved IP addresses for Anthropic API endpoints that Egress Filtering permits                                                                                                                 | Whitelist                                                                          |
 
 ## Authentication
 
@@ -124,15 +125,15 @@
 | **Preflight Check**        | A validation run before execution: Docker available, Credentials present, source directory exists, dirty working tree warning                                                                                                                    | Pre-check, startup validation                    |
 | **Container Session**      | A deep module that owns the entire lifecycle of a sandboxed Container: creation, workspace setup, command execution, result extraction, and cleanup                                                                                              | Session, sandbox context                         |
 | **Agent Runner** (updated) | Loop orchestrator that accepts an Agent Provider (not the generic Container Provider) and Container Handle; owns retry/backoff, Check Command verification, and Commit Nudge — delegates per-loop execution to the Agent Provider via `invoke()` | Loop executor, agent loop                        |
-| **Image Manager**          | The module that builds the Base Image, installs Features, runs Prepare Commands, and caches the resulting images                                                                                                                                 | Builder, image builder                           |
+| **Image Manager** (updated) | The module that builds the Base Image, installs Features, runs Env Setup, and caches the resulting images                                                                                                                                        | Builder, image builder                           |
 
 ## Queue Orchestration
 
 | Term                  | Definition                                                                                                                                                 | Aliases to avoid                                                                                   |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
 | **Queue**             | A YAML manifest or directory of Markdown files describing multiple Tasks to be executed, with optional dependencies, groups, concurrency, and defaults     | Batch, job list, task list                                                                         |
-| **Queue Item** (updated) | A single entry in a Queue, consisting of an `id`, a `task` description, and optional overrides for difficulty, features, prepare, image, check, env, etc. | Task (when referring to the queue entry rather than the work description), job                     |
-| **Queue Defaults** (updated) | Queue-level configuration values (difficulty, maxLoops, features, prepare, env, etc.) that merge with per-item overrides; item values take precedence  | Global config, base config                                                                         |
+| **Queue Item** (updated) | A single entry in a Queue, consisting of an `id`, a `task` description, and optional overrides for difficulty, features, envSetup, projectSetup, image, check, env, etc. | Task (when referring to the queue entry rather than the work description), job                     |
+| **Queue Defaults** (updated) | Queue-level configuration values (difficulty, maxLoops, features, envSetup, projectSetup, env, etc.) that merge with per-item overrides; item values take precedence  | Global config, base config                                                                         |
 | **Queue State**       | A persistent record of a Queue Run's progress, stored in a `.state.yaml` file alongside the Queue file or inside the queue directory                       | State file (ambiguous with Progress File), checkpoint                                              |
 | **Item Status**       | The lifecycle state of a Queue Item: `pending`, `in_progress`, `completed`, `failed`, or `blocked`                                                         | Status, state (too generic)                                                                        |
 | **Queue Run ID**      | An 8-hex-character identifier for an entire Queue execution, distinct from per-item Run IDs                                                                | Run ID (ambiguous — see flagged ambiguities)                                                       |
@@ -157,7 +158,7 @@
 | **File Queue Source**               | YAML-file-backed implementation of Queue Source; reads from `<name>.yaml`, writes state to `<name>.state.yaml`                                                                                                                                         | YAML loader                                |
 | **Directory Queue Source**          | Markdown-directory-backed implementation of Queue Source; reads `.md` files from a directory, optional `_defaults.yaml` for Queue Defaults, state to `.state.yaml` inside the directory                                                                | Markdown queue source, directory loader    |
 | **Markdown Task Parser**            | Pure function that parses a single Markdown task file into a Queue Item or validation errors                                                                                                                                                           | Task parser, markdown parser               |
-| **Frontmatter** (updated)           | YAML section at the start of a Markdown task file or GitHub Issue body (between `---` delimiters) containing optional Queue Item overrides: `dependsOn`, `difficulty`, `features`, `prepare`, `image`, `check`, `group`, `maxLoops`, `env`, `cpu`, `memory` | YAML header, metadata                      |
+| **Frontmatter** (updated)           | YAML section at the start of a Markdown task file or GitHub Issue body (between `---` delimiters) containing optional Queue Item overrides: `dependsOn`, `difficulty`, `features`, `envSetup`, `projectSetup`, `image`, `check`, `group`, `maxLoops`, `env`, `cpu`, `memory` | YAML header, metadata                      |
 | **Task Body**                       | The Markdown content after Frontmatter; becomes the Queue Item's task description                                                                                                                                                                      | Task content, body text                    |
 | **GitHub Issue Queue Source** (new) | Implementation of Queue Source backed by GitHub Issues labeled `agent/knox`; fetches issues via `gh` CLI, parses bodies with the Markdown Task Parser, and builds a Queue Manifest with dependency graph                                               | GitHub source, issue source, remote source |
 | **GitHub Client** (new)             | Module wrapping all `gh` CLI interactions (list issues, add/remove labels, close issues, ensure labels); accepts a Command Runner for testability                                                                                                      | gh wrapper, GitHub API client              |
@@ -266,18 +267,21 @@
 - The **Base Image** ships with no user-facing runtimes; **Features** add
   runtimes on top of it
 - The **Image Manager** builds the **Base Image**, installs **Features** (sorted
-  alphabetically for deterministic caching), runs the **Prepare Command**, and
-  commits the result as a **Cached Image**
+  alphabetically for deterministic caching), runs **Env Setup** (if specified),
+  and commits the result as a **Cached Image**
 - **Features** and **Custom Image** are mutually exclusive at any config level;
   the **Feature Registry** validates this at load time
 - A **Cached Image** key is a SHA-256 hash of all inputs (Dockerfile content,
-  Feature install script contents, Feature versions, Prepare Command); changing
-  any input produces a new cache tag
-- **Custom Images** without a **Prepare Command** are used directly; with a
-  **Prepare Command** they produce a **Cached Image**
+  Feature install script contents, Feature versions, **Env Setup** command);
+  changing any input produces a new cache tag
+- **Custom Images** without **Env Setup** are used directly; with **Env Setup**
+  they produce a **Cached Image**
 - The **Orchestrator** uses an **Image Resolver** to resolve per-item
   **Environment Config** to a Docker image; items with identical configs share
   the same **Cached Image**
+- A **Container Session** runs **Project Setup** (if specified) after source copy
+  and chown but before **Egress Filtering**; failure is fatal for the item and
+  blocks dependents (new)
 - **Egress Filtering** is applied to the **Container** before the first **Loop**
   begins
 - An **Orchestrator** loads a **Queue** via a **Queue Source** and produces a
@@ -285,7 +289,8 @@
 - An **Orchestrator** generates exactly one **Queue Run ID** per execution
 - Each **Queue Item** produces one **Knox** engine run with its own **Run ID**
 - **Queue Defaults** merge with per-item overrides; item values take precedence
-  (for **Environment Config**, per-item fully replaces defaults — no merging)
+  (for **Environment Config**, per-item fully replaces defaults — no merging;
+  **Project Setup** replaces independently of **Environment Config**) (updated)
 - A **Queue Item**'s **Difficulty** (defaulting to `balanced`) is resolved to a
   concrete model string via the injected **Resolve Difficulty** function before
   the **Knox** engine is invoked — the engine never sees **Difficulty**, only the
@@ -355,7 +360,7 @@
   for **GitHub Issue Queue Source**, identical in shape to `_defaults.yaml` for
   **Directory Queue Source** (new)
 
-## Example dialogue (updated — GitHub Issue Queue Source)
+## Example dialogue (updated — Env Setup / Project Setup split)
 
 > **Dev:** "How do I set up the environment for my tasks? I need Python and
 > Deno." **Domain expert:** "Declare **Features** in your queue. In
@@ -365,24 +370,29 @@
 > **Cached Image** tagged by hash — same inputs, same cache hit."
 >
 > **Dev:** "What if I also need to install my project's pip packages?" **Domain
-> expert:** "Add a **Prepare Command**:
-> `prepare: 'pip install -r
-> requirements.txt'`. It runs after **Features** are
-> installed, still with network access. The **Prepare Command** is included in
-> the cache key, so changing it busts the cache."
+> expert:** "Add **Project Setup**: `projectSetup: 'pip install -r
+> requirements.txt'`. It runs after source is copied into the **Container** but
+> before **Egress Filtering** locks down the network. It has full access to your
+> source tree and runs as the knox user."
+>
+> **Dev:** "Why not cache that in the image?" **Domain expert:** "Because it
+> needs your source files — `requirements.txt` doesn't exist at image build
+> time. If you need something that _doesn't_ depend on source — like installing
+> a system tool — use **Env Setup**: `envSetup: 'apt-get install -y jq'`. That
+> runs during image build, gets cached, and is included in the cache key."
 >
 > **Dev:** "One of my tasks needs Rust instead of Python. How do I override?"
 > **Domain expert:** "Set the **Environment Config** in that task's
-> **Frontmatter**: `features: [rust:1.78]` and `prepare: 'cargo fetch'`.
-> Per-item **Environment Config** fully replaces **Queue Defaults** — no
-> merging. The **Image Resolver** in the **Orchestrator** builds a separate
-> **Cached Image** for that item."
+> **Frontmatter**: `features: [rust:1.78]` and
+> `projectSetup: 'cargo fetch'`. Per-item **Environment Config**
+> (`features`/`envSetup`/`image`) fully replaces **Queue Defaults** — no
+> merging. **Project Setup** replaces independently. The **Image Resolver** in
+> the **Orchestrator** builds a separate **Cached Image** for that item."
 >
 > **Dev:** "What if Knox's features don't cover my stack?" **Domain expert:**
-> "Use the **Custom Image** escape hatch: `image:
-> my-org/custom:latest`. You
-> can combine it with a **Prepare Command**, but **Features** and **Custom
-> Image** are mutually exclusive — Knox rejects configs with both."
+> "Use the **Custom Image** escape hatch: `image: my-org/custom:latest`. You
+> can combine it with **Env Setup** or **Project Setup**, but **Features** and
+> **Custom Image** are mutually exclusive — Knox rejects configs with both."
 >
 > **Dev:** "How do I define a queue? I see both YAML files and Markdown
 > directories." **Domain expert:** "Two **Queue Sources**. A **File Queue
@@ -472,10 +482,11 @@
   **Container Session** is the Knox module that manages a Container's lifecycle.
   Do not use "session" alone — always say **Container Session** to avoid
   confusion with HTTP sessions or user sessions.
-- **"setup"** is the former field name, now renamed to **Prepare Command**. The
-  codebase rejects `setup` with a migration error directing users to `prepare`.
-  Do not use "setup command" — always say **Prepare Command**. The legacy
-  `ensureSetupImage` method is deprecated and delegates to `ensureFeatureImage`.
+- **"setup" / "prepare"** (updated): Both are former field names. `setup` was
+  renamed to `prepare`, which has now been split into **Env Setup** (image-level,
+  no source) and **Project Setup** (post-source, pre-network). Do not use
+  "setup command" or "prepare command" — always specify **Env Setup** or
+  **Project Setup**. The legacy `ensureSetupImage` method is removed.
 - **"Run ID"** now has two scopes: the per-engine **Run ID** (8-hex, one per
   Knox invocation) and the per-queue **Queue Run ID** (8-hex, one per
   Orchestrator execution). Always qualify: "Run ID" for engine scope, "Queue Run
@@ -538,11 +549,12 @@
   Knox-maintained install script with metadata. In code, `FeatureConfigEntry` is
   the raw config value; **Resolved Feature** is the validated, ready-to-install
   form.
-- **"environment"** (new): Can mean the Docker container environment
-  (**Environment Config**: features + prepare + image), OS environment variables
+- **"environment"** (updated): Can mean the Docker container environment
+  (**Environment Config**: features + envSetup + image), OS environment variables
   (`env` field on Queue Item), or the host system. Use **Environment Config**
-  when referring to the container setup declaration. Use "env vars" or
-  "environment variables" for the `env` field.
+  when referring to the image-level container setup declaration. Use "env vars" or
+  "environment variables" for the `env` field. Note that **Project Setup** is not
+  part of **Environment Config** — it operates at a different lifecycle phase.
 - **"source" (three meanings)** (new): The word "source" now has three distinct
   meanings: **Queue Source** (the data layer interface), **Source Provider**
   (the git cloning mechanism), and **Source Flag** (the `--source` CLI

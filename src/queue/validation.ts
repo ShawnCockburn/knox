@@ -1,9 +1,6 @@
 import type { QueueItem, QueueManifest, ValidationError } from "./types.ts";
 
-const SETUP_MIGRATION_ERROR =
-  "The `setup` field has been renamed to `prepare`. Please update your configuration.";
-
-/** Validate environment fields (features, prepare, image) and reject setup. */
+/** Validate environment fields (features, envSetup, image). */
 function validateEnvironmentFields(
   // deno-lint-ignore no-explicit-any
   obj: any,
@@ -11,15 +8,6 @@ function validateEnvironmentFields(
   errors: ValidationError[],
   itemId?: string,
 ): void {
-  // Hard break: reject setup field
-  if (obj.setup !== undefined) {
-    errors.push({
-      ...(itemId && { itemId }),
-      field: "setup",
-      message: `${context}: ${SETUP_MIGRATION_ERROR}`,
-    });
-  }
-
   // Mutual exclusivity: features and image cannot coexist
   if (obj.features !== undefined && obj.image !== undefined) {
     errors.push({
@@ -145,7 +133,7 @@ export function validateManifest(
       dependsOn: item.dependsOn,
       model: item.model,
       features: item.features,
-      prepare: item.prepare,
+      envSetup: item.envSetup,
       image: item.image,
       check: item.check,
       maxLoops: item.maxLoops,
@@ -153,6 +141,7 @@ export function validateManifest(
       prompt: item.prompt,
       cpu: item.cpu,
       memory: item.memory,
+      projectSetup: item.projectSetup,
     });
   }
 

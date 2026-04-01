@@ -23,6 +23,7 @@ export interface ContainerSessionOptions {
   readonly sourceProvider: SourceProvider;
   readonly cpuLimit?: string;
   readonly memoryLimit?: string;
+  readonly projectSetup?: string;
 }
 
 /**
@@ -77,6 +78,7 @@ export class ContainerSession {
       sourceProvider,
       cpuLimit,
       memoryLimit,
+      projectSetup,
     } = options;
 
     // Prepare source
@@ -146,6 +148,27 @@ export class ContainerSession {
     // Cleanup source temp files
     log.debug(`[session] Cleaning up source temp files...`);
     await sourceProvider.cleanup(runId);
+
+    // Run projectSetup command (after source copy, before network restriction)
+    if (projectSetup) {
+      log.info(`Running project setup...`);
+      log.debug(`[session] projectSetup: ${projectSetup}`);
+      const setupResult = await runtime.exec(
+        containerId,
+        ["sh", "-c", projectSetup],
+        { workdir: WORKSPACE },
+      );
+      if (setupResult.exitCode !== 0) {
+        log.debug(
+          `[session] projectSetup failed (exit ${setupResult.exitCode}): ${setupResult.stderr}`,
+        );
+        await runtime.remove(containerId).catch(() => {});
+        throw new Error(
+          `projectSetup command failed (exit ${setupResult.exitCode}): ${setupResult.stderr}`,
+        );
+      }
+      log.debug(`[session] projectSetup completed`);
+    }
 
     // Lock down network to API-only egress
     log.debug(

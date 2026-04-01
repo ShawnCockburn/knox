@@ -6,7 +6,7 @@ const KNOWN_FIELDS = new Set([
   "dependsOn",
   "model",
   "features",
-  "prepare",
+  "envSetup",
   "image",
   "check",
   "group",
@@ -14,13 +14,11 @@ const KNOWN_FIELDS = new Set([
   "env",
   "cpu",
   "memory",
+  "projectSetup",
 ]);
 
 /** Fields that have been removed with migration instructions. */
-const REMOVED_FIELDS: Record<string, string> = {
-  setup:
-    "The `setup` field has been renamed to `prepare`. Please update your configuration.",
-};
+const REMOVED_FIELDS: Record<string, string> = {};
 
 /** Result type for parseMarkdownTask. */
 export type ParseResult =
@@ -127,8 +125,9 @@ export function parseMarkdownTask(
     ...(dependsOn !== undefined && { dependsOn }),
     ...(fm.model !== undefined && { model: fm.model }),
     ...(fm.features !== undefined && { features: fm.features }),
-    ...(fm.prepare !== undefined && { prepare: fm.prepare }),
+    ...(fm.envSetup !== undefined && { envSetup: fm.envSetup }),
     ...(fm.image !== undefined && { image: fm.image }),
+    ...(fm.projectSetup !== undefined && { projectSetup: fm.projectSetup }),
     ...(fm.check !== undefined && { check: fm.check }),
     ...(fm.group !== undefined && { group: fm.group }),
     ...(fm.maxLoops !== undefined && { maxLoops: fm.maxLoops }),
