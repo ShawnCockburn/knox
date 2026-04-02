@@ -345,6 +345,43 @@ Deno.test("AgentRunner", async (t) => {
   });
 
   await t.step(
+    "abort during retry stops immediately instead of retrying",
+    async () => {
+      const provider = new MockAgentProvider();
+      const container = new MockContainerHandle();
+
+      const controller = new AbortController();
+
+      // First invoke returns exit 137 (simulating container kill from abort),
+      // then abort fires — should NOT retry against the dead container
+      let invokeCount = 0;
+      const origInvoke = provider.invoke.bind(provider);
+      provider.invoke = async (ctx: LlmAgentContext) => {
+        invokeCount++;
+        if (invokeCount === 1) {
+          // Simulate abort firing while claude is running
+          controller.abort();
+          return { completed: false, exitCode: 137 };
+        }
+        return origInvoke(ctx);
+      };
+
+      // hasDirtyTree → clean
+      container.execResults = [{ exitCode: 0, stdout: "", stderr: "" }];
+
+      const runner = createRunner(provider, container, {
+        maxLoops: 3,
+        signal: controller.signal,
+      });
+      const result = await runner.run();
+
+      assertEquals(result.completed, false);
+      // Only 1 invoke — should NOT have retried after abort
+      assertEquals(invokeCount, 1);
+    },
+  );
+
+  await t.step(
     "passes task, loop context, and customPrompt to provider",
     async () => {
       const provider = new MockAgentProvider();

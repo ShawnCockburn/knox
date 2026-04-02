@@ -182,6 +182,12 @@ export class AgentRunner {
     let lastError: Error | undefined;
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      // Bail immediately if aborted (container is likely gone)
+      if (this.options.signal?.aborted) {
+        log.debug(`[agent] Loop ${loopNumber} aborted before attempt ${attempt}`);
+        return { completed: false };
+      }
+
       try {
         if (attempt > 0) {
           log.debug(
@@ -205,7 +211,7 @@ export class AgentRunner {
               1000 * Math.pow(2, attempt)
             }ms...`,
           );
-          await delay(1000 * Math.pow(2, attempt));
+          await delay(1000 * Math.pow(2, attempt), this.options.signal);
           continue;
         }
 
@@ -223,7 +229,7 @@ export class AgentRunner {
           log.debug(
             `[agent] Retrying after ${1000 * Math.pow(2, attempt)}ms...`,
           );
-          await delay(1000 * Math.pow(2, attempt));
+          await delay(1000 * Math.pow(2, attempt), this.options.signal);
           continue;
         }
       }
@@ -233,6 +239,13 @@ export class AgentRunner {
   }
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => {
+      clearTimeout(timer);
+      resolve();
+    }, { once: true });
+  });
 }
