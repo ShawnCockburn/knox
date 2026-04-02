@@ -109,6 +109,25 @@ export class GitHubIssueQueueSource implements QueueSource {
       numberToItemId.set(issueNum, itemId);
     }
 
+    // On resume, completed issues may be closed and absent from the open list.
+    // Augment the resolution map with completed items from the state file.
+    const existingState = await this.readState();
+    const completedItemIds = new Set<string>();
+    if (existingState) {
+      for (const [itemId, itemState] of Object.entries(existingState.items)) {
+        if (itemState.status === "completed") {
+          completedItemIds.add(itemId);
+          const m = itemId.match(/^gh-(\d+)-/);
+          if (m) {
+            const num = parseInt(m[1], 10);
+            if (!numberToItemId.has(num)) {
+              numberToItemId.set(num, itemId);
+            }
+          }
+        }
+      }
+    }
+
     const resolvedItems: typeof items = items.map((item) => {
       if (!item.dependsOn) return item;
       const deps = item.dependsOn.map((dep) => {
@@ -121,6 +140,22 @@ export class GitHubIssueQueueSource implements QueueSource {
     });
     items.length = 0;
     items.push(...resolvedItems);
+
+    // Strip deps on completed items not in the current manifest.
+    // These are satisfied deps from a prior run — no need to validate or wait.
+    const currentItemIds = new Set(items.map((i) => i.id));
+    for (let i = 0; i < items.length; i++) {
+      if (!items[i].dependsOn) continue;
+      const filtered: string[] = items[i].dependsOn!.filter(
+        (dep: string) => currentItemIds.has(dep) || !completedItemIds.has(dep),
+      );
+      if (filtered.length !== items[i].dependsOn!.length) {
+        items[i] = {
+          ...items[i],
+          dependsOn: filtered.length > 0 ? filtered : undefined,
+        };
+      }
+    }
 
     // Assemble raw manifest and validate
     const rawManifest = {

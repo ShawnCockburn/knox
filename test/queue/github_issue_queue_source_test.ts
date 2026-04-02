@@ -497,3 +497,49 @@ Task body`,
     }
   });
 });
+
+Deno.test("GitHubIssueQueueSource — resolves #N dep to completed closed issue on resume", async () => {
+  await withTempState(async (statePath) => {
+    // Only issue #11 is open; #10 was completed and closed.
+    const issues = [
+      makeIssue({
+        number: 11,
+        title: "Depends on closed",
+        body: `---
+dependsOn:
+  - "#10"
+---
+Build on top of closed issue`,
+      }),
+    ];
+
+    const { runner } = issueRunner(issues);
+    const source = new GitHubIssueQueueSource({
+      cwd: "/repo",
+      statePath,
+      runner,
+    });
+
+    // Simulate state from a prior run where #10 completed
+    await source.writeState({
+      queueRunId: "run-prev",
+      startedAt: "2026-01-01T00:00:00Z",
+      items: {
+        "gh-10-define-difficulty-module": {
+          status: "completed",
+          branch: "knox/gh-10",
+        },
+        "gh-11-depends-on-closed": {
+          status: "failed",
+        },
+      },
+    });
+
+    const result = await source.load();
+    assertEquals(result.ok, true);
+    if (result.ok) {
+      // The dep on the completed item should be stripped — it's already satisfied
+      assertEquals(result.manifest.items[0].dependsOn, undefined);
+    }
+  });
+});

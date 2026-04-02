@@ -330,10 +330,13 @@ export class Orchestrator {
       truncate: true,
     });
 
-    const onLine = (line: string) => {
-      // Write to log file
-      const encoder = new TextEncoder();
+    const encoder = new TextEncoder();
+    const writeToLog = (line: string) => {
       logFile.writeSync(encoder.encode(line + "\n"));
+    };
+
+    const onLine = (line: string) => {
+      writeToLog(line);
       // Forward to caller if verbose
       this.options.onLine?.(item.id, line);
     };
@@ -341,6 +344,11 @@ export class Orchestrator {
     const onEvent = (event: KnoxEvent) => {
       this.options.onEvent?.(item.id, event);
     };
+
+    // Tap all log.* calls into the per-item log file
+    log.setListener((_level, message) => {
+      writeToLog(`[${_level}] ${message}`);
+    });
 
     // Build engine options
     const engineOpts: KnoxEngineOptions = {
@@ -382,6 +390,7 @@ export class Orchestrator {
         : new Knox(engineOpts);
       const outcome = await engine.run();
 
+      log.setListener(null);
       logFile.close();
 
       const itemFinishedAt = new Date().toISOString();
@@ -457,6 +466,7 @@ export class Orchestrator {
         this.blockDependents(item.id, manifest, state);
       }
     } catch (e) {
+      log.setListener(null);
       logFile.close();
 
       const itemFinishedAt = new Date().toISOString();

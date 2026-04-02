@@ -22,9 +22,13 @@ function colorize(text: string, color: string): string {
   return `${color}${text}${RESET}`;
 }
 
+/** Callback that receives every log message regardless of level or mute state. */
+export type LogListener = (level: LogLevel, message: string) => void;
+
 class Logger {
   private threshold: number = LEVELS.info;
   private muted = false;
+  private listener: LogListener | null = null;
 
   setLevel(level: LogLevel): void {
     this.threshold = LEVELS[level];
@@ -40,31 +44,41 @@ class Logger {
     this.muted = false;
   }
 
+  /** Set a listener that receives all log messages (bypasses level/mute). */
+  setListener(listener: LogListener | null): void {
+    this.listener = listener;
+  }
+
   debug(message: string): void {
+    this.listener?.("debug", message);
     if (!this.muted && LEVELS.debug >= this.threshold) {
       console.error(`${colorize("[knox:DEBUG]", GRAY)} ${message}`);
     }
   }
 
   info(message: string): void {
+    this.listener?.("info", message);
     if (!this.muted && LEVELS.info >= this.threshold) {
       console.error(`[knox:INFO] ${message}`);
     }
   }
 
   warn(message: string): void {
+    this.listener?.("warn", message);
     if (!this.muted && LEVELS.warn >= this.threshold) {
       console.error(`${colorize("[knox:WARN]", YELLOW)} ${message}`);
     }
   }
 
   error(message: string): void {
+    this.listener?.("error", message);
     if (!this.muted && LEVELS.error >= this.threshold) {
       console.error(`${colorize("[knox:ERROR]", RED)} ${message}`);
     }
   }
 
   always(message: string): void {
+    this.listener?.("info", message);
     console.error(`[knox] ${message}`);
   }
 }
