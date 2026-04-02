@@ -28,7 +28,8 @@ Before asking the user anything else, gather context:
 
 - Read `.knox/config.yaml` to find `github.defaults` (model, features, prepare,
   check, maxLoops) and `github.authors`
-- Skim the README or CLAUDE.md for the project's standard build/test commands
+- Skim the README, AGENTS.md, or CLAUDE.md for the project's standard
+  build/test commands
 - Check existing open issues labeled `agent/knox` via
   `gh issue list --label "agent/knox" --state open --limit 20` to avoid
   duplicates and understand existing task context

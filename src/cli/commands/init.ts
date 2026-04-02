@@ -1,7 +1,7 @@
-import knoxPlanSkill from "../../../.claude/skills/knox-plan/skill.md" with {
+import knoxPlanSkill from "../../../.agents/skills/knox-plan/SKILL.md" with {
   type: "text",
 };
-import knoxAddTaskSkill from "../../../.claude/skills/knox-add-task/skill.md" with {
+import knoxAddTaskSkill from "../../../.agents/skills/knox-add-task/SKILL.md" with {
   type: "text",
 };
 import { join } from "@std/path";
@@ -47,18 +47,28 @@ async function installSkills(repoRoot: string): Promise<void> {
   ];
 
   for (const [name, content] of skills) {
-    const skillDir = join(repoRoot, ".claude", "skills", name);
-    const skillPath = join(skillDir, "skill.md");
-    const existed = await pathExists(skillPath);
+    await installSkill(repoRoot, ".agents", name, content);
+    await installSkill(repoRoot, ".claude", name, content);
+  }
+}
 
-    await ensureDir(skillDir);
-    await Deno.writeTextFile(skillPath, content);
+async function installSkill(
+  repoRoot: string,
+  agentDir: ".agents" | ".claude",
+  name: string,
+  content: string,
+): Promise<void> {
+  const skillDir = join(repoRoot, agentDir, "skills", name);
+  const skillPath = join(skillDir, "SKILL.md");
+  const existed = await pathExists(skillPath);
 
-    if (existed) {
-      console.warn(`warning  .claude/skills/${name}/skill.md overwritten`);
-    } else {
-      console.log(`created  .claude/skills/${name}/skill.md`);
-    }
+  await ensureDir(skillDir);
+  await Deno.writeTextFile(skillPath, content);
+
+  if (existed) {
+    console.warn(`warning  ${agentDir}/skills/${name}/SKILL.md overwritten`);
+  } else {
+    console.log(`created  ${agentDir}/skills/${name}/SKILL.md`);
   }
 }
 

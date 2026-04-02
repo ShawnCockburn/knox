@@ -26,8 +26,8 @@ Before asking the user anything, explore the project to gather defaults:
 
 - Read any existing `_defaults.yaml` files under `.knox/queues/` to understand
   current conventions (model, concurrency, setup, check, maxLoops)
-- Read the `README.md` or any `CLAUDE.md` for the project's standard build/test
-  commands
+- Read the `README.md`, `AGENTS.md`, or `CLAUDE.md` for the project's standard
+  build/test commands
 - If a PRD path was provided, read that file now
 - Look at 1–2 existing task files to understand the depth and style already in
   use
