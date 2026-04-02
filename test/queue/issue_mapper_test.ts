@@ -97,7 +97,7 @@ Deno.test("mapIssueToQueueItem — plain body (no frontmatter)", () => {
   if (result.ok) {
     assertEquals(result.item.id, "gh-10-implement-feature-x");
     assertEquals(result.item.task, "Build the feature X with tests");
-    assertEquals(result.item.model, undefined);
+    assertEquals(result.item.difficulty, undefined);
     assertEquals(result.item.dependsOn, undefined);
   }
 });
@@ -107,7 +107,7 @@ Deno.test("mapIssueToQueueItem — body with frontmatter", () => {
     number: 7,
     title: "Setup Auth",
     body: `---
-model: opus
+difficulty: complex
 maxLoops: 5
 features:
   - python:3.12
@@ -121,7 +121,7 @@ Implement OAuth2 authentication`,
   assertEquals(result.ok, true);
   if (result.ok) {
     assertEquals(result.item.id, "gh-7-setup-auth");
-    assertEquals(result.item.model, "opus");
+    assertEquals(result.item.difficulty, "complex");
     assertEquals(result.item.maxLoops, 5);
     assertEquals(result.item.features, ["python:3.12"]);
     assertEquals(result.item.task, "Implement OAuth2 authentication");

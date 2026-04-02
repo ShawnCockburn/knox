@@ -41,7 +41,7 @@ items:
   await t.step("loads manifest with defaults", async () => {
     const { dir, path } = await setup(`
 defaults:
-  model: opus
+  difficulty: complex
   maxLoops: 5
 items:
   - id: a
@@ -52,7 +52,7 @@ items:
       const result = await source.load();
       assertEquals(result.ok, true);
       if (result.ok) {
-        assertEquals(result.manifest.defaults!.model, "opus");
+        assertEquals(result.manifest.defaults!.difficulty, "complex");
         assertEquals(result.manifest.defaults!.maxLoops, 5);
       }
     } finally {

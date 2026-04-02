@@ -37,6 +37,7 @@ function mockEngineFactory(
               startedAt: new Date().toISOString(),
               finishedAt: new Date().toISOString(),
               durationMs: 100,
+              difficulty: opts.difficulty ?? "balanced",
               model: opts.model ?? "sonnet",
               task: opts.task,
               autoCommitted: false,
@@ -243,9 +244,9 @@ Deno.test("Orchestrator", async (t) => {
     const logDir = await setupLogDir();
     try {
       const source = new MockQueueSource({
-        defaults: { model: "opus", maxLoops: 5, env: ["DEFAULT=true"] },
+        defaults: { difficulty: "complex", maxLoops: 5, env: ["DEFAULT=true"] },
         items: [
-          { id: "a", task: "Task A", model: "haiku", env: ["ITEM=yes"] },
+          { id: "a", task: "Task A", difficulty: "easy", env: ["ITEM=yes"] },
           { id: "b", task: "Task B" },
         ],
       });
@@ -533,6 +534,7 @@ Deno.test("Orchestrator", async (t) => {
               startedAt: new Date().toISOString(),
               finishedAt: new Date().toISOString(),
               durationMs: 50,
+              difficulty: "balanced",
               model: "sonnet",
               task: opts.task,
               autoCommitted: false,
@@ -597,6 +599,7 @@ Deno.test("Orchestrator", async (t) => {
                 startedAt: new Date().toISOString(),
                 finishedAt: new Date().toISOString(),
                 durationMs: 10,
+                difficulty: "balanced",
                 model: "sonnet",
                 task: opts.task,
                 autoCommitted: false,
@@ -662,6 +665,7 @@ Deno.test("Orchestrator", async (t) => {
                 startedAt: new Date().toISOString(),
                 finishedAt: new Date().toISOString(),
                 durationMs: 10,
+                difficulty: "balanced",
                 model: "sonnet",
                 task: opts.task,
                 autoCommitted: false,
@@ -760,6 +764,7 @@ Deno.test("Orchestrator", async (t) => {
                 startedAt: new Date().toISOString(),
                 finishedAt: new Date().toISOString(),
                 durationMs: 10,
+                difficulty: "balanced",
                 model: "sonnet",
                 task: opts.task,
                 autoCommitted: false,
@@ -1024,6 +1029,7 @@ Deno.test("Orchestrator", async (t) => {
               startedAt: new Date().toISOString(),
               finishedAt: new Date().toISOString(),
               durationMs: 100,
+              difficulty: opts.difficulty ?? "balanced",
               model: "sonnet",
               task: opts.task,
               autoCommitted: false,
@@ -1099,6 +1105,7 @@ Deno.test("Orchestrator", async (t) => {
               startedAt: new Date().toISOString(),
               finishedAt: new Date().toISOString(),
               durationMs: 10,
+              difficulty: "balanced",
               model: "sonnet",
               task: opts.task,
               autoCommitted: false,

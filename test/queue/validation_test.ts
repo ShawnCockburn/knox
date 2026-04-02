@@ -17,7 +17,7 @@ Deno.test("validateManifest", async (t) => {
   await t.step("accepts valid manifest with defaults and concurrency", () => {
     const result = validateManifest({
       concurrency: 3,
-      defaults: { model: "opus", maxLoops: 5 },
+      defaults: { difficulty: "complex", maxLoops: 5 },
       items: [
         { id: "a", task: "Do A" },
         { id: "b", task: "Do B", dependsOn: ["a"] },
@@ -25,7 +25,7 @@ Deno.test("validateManifest", async (t) => {
     });
     assertEquals(result.errors.length, 0);
     assertEquals(result.manifest!.concurrency, 3);
-    assertEquals(result.manifest!.defaults!.model, "opus");
+    assertEquals(result.manifest!.defaults!.difficulty, "complex");
     assertEquals(result.manifest!.defaults!.maxLoops, 5);
   });
 
@@ -257,6 +257,31 @@ Deno.test("validateManifest", async (t) => {
       ],
     });
     assertEquals(result.errors.length, 0);
+  });
+
+  await t.step("rejects legacy model in defaults with migration guidance", () => {
+    const result = validateManifest({
+      defaults: { model: "opus" },
+      items: [{ id: "a", task: "Do A" }],
+    });
+    assertEquals(result.errors.length, 1);
+    assertStringIncludes(result.errors[0].message, "replaced by 'difficulty'");
+  });
+
+  await t.step("rejects legacy model on item with migration guidance", () => {
+    const result = validateManifest({
+      items: [{ id: "a", task: "Do A", model: "opus" }],
+    });
+    assertEquals(result.errors.length, 1);
+    assertStringIncludes(result.errors[0].message, "replaced by 'difficulty'");
+  });
+
+  await t.step("rejects invalid difficulty values", () => {
+    const result = validateManifest({
+      items: [{ id: "a", task: "Do A", difficulty: "hard" }],
+    });
+    assertEquals(result.errors.length, 1);
+    assertStringIncludes(result.errors[0].message, "must be one of");
   });
 
   await t.step("accepts projectSetup on item and defaults", () => {

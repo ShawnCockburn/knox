@@ -4,7 +4,7 @@ import type { QueueItem, ValidationError } from "./types.ts";
 /** Known frontmatter field names for a QueueItem. */
 const KNOWN_FIELDS = new Set([
   "dependsOn",
-  "model",
+  "difficulty",
   "features",
   "envSetup",
   "image",
@@ -18,7 +18,10 @@ const KNOWN_FIELDS = new Set([
 ]);
 
 /** Fields that have been removed with migration instructions. */
-const REMOVED_FIELDS: Record<string, string> = {};
+const REMOVED_FIELDS: Record<string, string> = {
+  model:
+    "The 'model' field has been replaced by 'difficulty'. Use one of: complex, balanced, easy.",
+};
 
 /** Result type for parseMarkdownTask. */
 export type ParseResult =
@@ -123,7 +126,7 @@ export function parseMarkdownTask(
     id,
     task,
     ...(dependsOn !== undefined && { dependsOn }),
-    ...(fm.model !== undefined && { model: fm.model }),
+    ...(fm.difficulty !== undefined && { difficulty: fm.difficulty }),
     ...(fm.features !== undefined && { features: fm.features }),
     ...(fm.envSetup !== undefined && { envSetup: fm.envSetup }),
     ...(fm.image !== undefined && { image: fm.image }),

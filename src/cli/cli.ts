@@ -28,6 +28,11 @@ import {
 import type { QueueOutput } from "../queue/output.ts";
 import { MultiQueueRunner } from "../queue/multi_queue_runner.ts";
 import type { QueueDefaults } from "../queue/types.ts";
+import {
+  claudeCodeDifficultyMap,
+  createDifficultyResolver,
+  isDifficulty,
+} from "../difficulty/mod.ts";
 
 /**
  * Resolve queue defaults environment config to a Docker image.
@@ -104,6 +109,8 @@ function createImageResolver(
   };
 }
 
+const resolveDifficulty = createDifficultyResolver(claudeCodeDifficultyMap);
+
 const USAGE = `Usage: knox <command> [options]
 
 Commands:
@@ -120,7 +127,7 @@ const RUN_USAGE = `Usage: knox run --task <task> [options]
 Options:
   --task <task>       Task description (required)
   --dir <dir>         Source directory (default: .)
-  --model <model>     Claude model (default: sonnet)
+  --difficulty <level> Difficulty: complex, balanced, easy (default: balanced)
   --features <list>   Features to install (e.g., "python:3.12,deno")
   --env-setup <cmd>   Environment setup command cached in Docker image (e.g., "apt-get install -y jq")
   --project-setup <cmd> Project setup command run after source copy (e.g., "deno install")
@@ -227,6 +234,7 @@ if (effectiveCommand === "init") {
       }
 
       const runtime = new DockerRuntime();
+      let renderer: StaticRenderer | QueueTUI | undefined;
 
       try {
         const source = new FileQueueSource(queueFilePath);
@@ -252,7 +260,6 @@ if (effectiveCommand === "init") {
         const logDir = resolve(dirname(queueFilePath), `${queueName}.logs`);
 
         const itemIds = manifest.items.map((i) => i.id);
-        let renderer: StaticRenderer | QueueTUI;
         if (useTUI) {
           renderer = new QueueTUI(itemIds, {
             verbose: isVerbose,
@@ -265,7 +272,7 @@ if (effectiveCommand === "init") {
         const controller = new AbortController();
         Deno.addSignalListener("SIGINT", () => {
           controller.abort();
-          renderer.setAborting();
+          renderer?.setAborting();
           if (!useTUI) {
             log.info(`\nInterrupted. Aborting queue...`);
           }
@@ -280,6 +287,7 @@ if (effectiveCommand === "init") {
           imageResolver: createImageResolver(imageManager),
           envVars: resolvedEnvVars,
           allowedIPs,
+          resolveDifficulty,
           dir: projectDir,
           logDir,
           signal: controller.signal,
@@ -287,15 +295,15 @@ if (effectiveCommand === "init") {
           verbose: isVerbose,
           suppressSummary: true,
           runtime,
-          onLine: (itemId, line) => renderer.appendLine(itemId, line),
-          onEvent: (itemId, event) => renderer.update(itemId, event),
-          onItemRunning: (itemId) => renderer.markItemRunning(itemId),
+          onLine: (itemId, line) => renderer!.appendLine(itemId, line),
+          onEvent: (itemId, event) => renderer!.update(itemId, event),
+          onItemRunning: (itemId) => renderer!.markItemRunning(itemId),
           onItemCompleted: (itemId, branch) =>
-            renderer.markItemCompleted(itemId, branch),
+            renderer!.markItemCompleted(itemId, branch),
           onItemFailed: (itemId, error) =>
-            renderer.markItemFailed(itemId, error),
+            renderer!.markItemFailed(itemId, error),
           onItemBlocked: (itemId, blockedBy) =>
-            renderer.markItemBlocked(itemId, blockedBy),
+            renderer!.markItemBlocked(itemId, blockedBy),
         });
 
         const report = await orchestrator.run();
@@ -314,7 +322,7 @@ if (effectiveCommand === "init") {
         );
         Deno.exit(allCompleted ? 0 : 1);
       } catch (e) {
-        renderer.stop();
+        renderer?.stop();
         if (useTUI) log.unmute();
 
         if (e instanceof OrchestratorValidationError) {
@@ -395,6 +403,7 @@ if (effectiveCommand === "init") {
           imageResolver: createImageResolver(imageManager),
           envVars: resolvedEnvVars,
           allowedIPs,
+          resolveDifficulty,
           dir: projectDir,
           logDir,
           signal: controller.signal,
@@ -473,6 +482,7 @@ if (effectiveCommand === "init") {
         imageResolver: createImageResolver(imageManager),
         envVars: resolvedEnvVars,
         allowedIPs,
+        resolveDifficulty,
         dir: projectDir,
         signal: controller.signal,
         resume: flags.resume as boolean,
@@ -551,7 +561,7 @@ if (effectiveCommand === "init") {
       const controller = new AbortController();
       Deno.addSignalListener("SIGINT", () => {
         controller.abort();
-        renderer.setAborting();
+        renderer?.setAborting();
         if (!useTUI) {
           log.info(`\nInterrupted. Aborting queue...`);
         }
@@ -566,6 +576,7 @@ if (effectiveCommand === "init") {
         imageResolver: createImageResolver(imageManager),
         envVars: resolvedEnvVars,
         allowedIPs,
+        resolveDifficulty,
         dir: projectDir,
         logDir,
         signal: controller.signal,
@@ -573,14 +584,14 @@ if (effectiveCommand === "init") {
         verbose: isVerbose,
         suppressSummary: true,
         runtime,
-        onLine: (itemId, line) => renderer.appendLine(itemId, line),
-        onEvent: (itemId, event) => renderer.update(itemId, event),
-        onItemRunning: (itemId) => renderer.markItemRunning(itemId),
+        onLine: (itemId, line) => renderer!.appendLine(itemId, line),
+        onEvent: (itemId, event) => renderer!.update(itemId, event),
+        onItemRunning: (itemId) => renderer!.markItemRunning(itemId),
         onItemCompleted: (itemId, branch) =>
-          renderer.markItemCompleted(itemId, branch),
-        onItemFailed: (itemId, error) => renderer.markItemFailed(itemId, error),
+          renderer!.markItemCompleted(itemId, branch),
+        onItemFailed: (itemId, error) => renderer!.markItemFailed(itemId, error),
         onItemBlocked: (itemId, blockedBy) =>
-          renderer.markItemBlocked(itemId, blockedBy),
+          renderer!.markItemBlocked(itemId, blockedBy),
       });
 
       const report = await orchestrator.run();
@@ -620,7 +631,7 @@ if (effectiveCommand === "init") {
     string: [
       "task",
       "dir",
-      "model",
+      "difficulty",
       "features",
       "env-setup",
       "project-setup",
@@ -634,7 +645,7 @@ if (effectiveCommand === "init") {
     ],
     boolean: ["verbose", "quiet", "skip-preflight", "help"],
     collect: ["env"],
-    default: { dir: ".", model: "sonnet", "max-loops": "10" },
+    default: { dir: ".", difficulty: "balanced", "max-loops": "10" },
   });
 
   // Validate mutual exclusivity
@@ -664,6 +675,14 @@ if (effectiveCommand === "init") {
   const maxLoops = parseInt(flags["max-loops"] as string, 10);
   if (isNaN(maxLoops) || maxLoops < 1) {
     console.error("Error: --max-loops must be a positive integer");
+    Deno.exit(2);
+  }
+
+  const difficulty = flags.difficulty as string;
+  if (!isDifficulty(difficulty)) {
+    console.error(
+      "Error: --difficulty must be one of: complex, balanced, easy",
+    );
     Deno.exit(2);
   }
 
@@ -771,7 +790,8 @@ if (effectiveCommand === "init") {
       image,
       envVars: resolvedEnvVars,
       allowedIPs,
-      model: flags.model as string,
+      difficulty,
+      model: resolveDifficulty(difficulty),
       maxLoops,
       customPrompt,
       check: flags.check as string | undefined,

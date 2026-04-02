@@ -79,6 +79,20 @@ export { resolveAllowedIPs } from "./shared/mod.ts";
 export { resolveConfig } from "./shared/mod.ts";
 export type { KnoxProjectConfig, ResolvedConfig } from "./shared/mod.ts";
 
+// Difficulty
+export {
+  claudeCodeDifficultyMap,
+  createDifficultyResolver,
+  DIFFICULTIES,
+  isDifficulty,
+  resolveDifficulty,
+} from "./difficulty/mod.ts";
+export type {
+  Difficulty,
+  DifficultyMap,
+  ResolveDifficulty,
+} from "./difficulty/mod.ts";
+
 // Queue output
 export type {
   QueueOutput,

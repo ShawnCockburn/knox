@@ -60,6 +60,7 @@ function mockEngineFactory() {
           startedAt: new Date().toISOString(),
           finishedAt: new Date().toISOString(),
           durationMs: 10,
+          difficulty: opts.difficulty ?? "balanced",
           model: opts.model ?? "sonnet",
           task: opts.task,
           autoCommitted: false,

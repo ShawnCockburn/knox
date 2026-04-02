@@ -4,7 +4,7 @@ import { parseMarkdownTask } from "../../src/queue/markdown_task_parser.ts";
 Deno.test("parseMarkdownTask", async (t) => {
   await t.step("valid task with all frontmatter fields", () => {
     const content = `---
-model: claude-opus-4-6
+difficulty: complex
 group: backend
 dependsOn:
   - setup-db
@@ -28,7 +28,7 @@ Implement the OAuth2 flow.
     assertEquals(result?.ok, true);
     if (result?.ok) {
       assertEquals(result.item.id, "implement-oauth");
-      assertEquals(result.item.model, "claude-opus-4-6");
+      assertEquals(result.item.difficulty, "complex");
       assertEquals(result.item.group, "backend");
       assertEquals(result.item.dependsOn, ["setup-db", "setup-auth"]);
       assertEquals(result.item.features, ["python:3.12"]);
@@ -52,7 +52,7 @@ Implement the OAuth2 flow.
       if (result?.ok) {
         assertEquals(result.item.id, "simple-task");
         assertEquals(result.item.task, "Just do this thing.");
-        assertEquals(result.item.model, undefined);
+        assertEquals(result.item.difficulty, undefined);
         assertEquals(result.item.dependsOn, undefined);
       }
     },
@@ -62,7 +62,7 @@ Implement the OAuth2 flow.
     "missing body (empty content after frontmatter) returns error",
     () => {
       const content = `---
-model: claude-opus-4-6
+difficulty: complex
 ---
 `;
       const result = parseMarkdownTask(content, "empty-body.md");
@@ -159,7 +159,7 @@ Do this.
     "body with complex markdown (code blocks containing ---, headers, lists) parses correctly",
     () => {
       const content = `---
-model: claude-sonnet-4-6
+difficulty: balanced
 ---
 
 # Task Title
@@ -182,7 +182,7 @@ More content after a horizontal rule.
       assertEquals(result?.ok, true);
       if (result?.ok) {
         assertEquals(result.item.id, "complex-task");
-        assertEquals(result.item.model, "claude-sonnet-4-6");
+        assertEquals(result.item.difficulty, "balanced");
         assertStringIncludes(result.item.task, "# Task Title");
         assertStringIncludes(result.item.task, "---");
         assertStringIncludes(result.item.task, "Item 2");
@@ -199,5 +199,19 @@ More content after a horizontal rule.
   await t.step("_-prefixed filename with path is skipped", () => {
     const result = parseMarkdownTask("Some content.", "tasks/_config.md");
     assertEquals(result, null);
+  });
+
+  await t.step("legacy model field returns migration error", () => {
+    const content = `---
+model: opus
+---
+
+Do this.
+`;
+    const result = parseMarkdownTask(content, "task.md");
+    assertEquals(result?.ok, false);
+    if (result && !result.ok) {
+      assertStringIncludes(result.errors[0].message, "replaced by 'difficulty'");
+    }
   });
 });

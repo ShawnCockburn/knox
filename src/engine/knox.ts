@@ -16,6 +16,7 @@ import type { ResultSink, SinkResult } from "./sink/result_sink.ts";
 import { SinkStrategy } from "./sink/result_sink.ts";
 import { GitBranchSink } from "./sink/git_branch_sink.ts";
 import { log } from "../shared/log.ts";
+import type { Difficulty } from "../difficulty/mod.ts";
 
 export interface KnoxEngineOptions {
   task: string;
@@ -25,6 +26,7 @@ export interface KnoxEngineOptions {
   allowedIPs: string[];
   runId?: RunId;
   maxLoops?: number;
+  difficulty?: Difficulty;
   model?: string;
   customPrompt?: string;
   check?: string;
@@ -50,6 +52,7 @@ export interface KnoxResult {
   startedAt: string;
   finishedAt: string;
   durationMs: number;
+  difficulty: Difficulty;
   model: string;
   task: string;
   autoCommitted: boolean;
@@ -88,6 +91,7 @@ export class Knox {
       allowedIPs,
       maxLoops = 10,
       model = "sonnet",
+      difficulty = "balanced",
       customPrompt,
       check,
       cpuLimit,
@@ -125,6 +129,7 @@ export class Knox {
     const partial: Partial<KnoxResult> = {
       runId,
       task,
+      difficulty,
       model,
       maxLoops,
       startedAt,
@@ -147,6 +152,7 @@ export class Knox {
           startedAt,
           finishedAt,
           durationMs,
+          difficulty,
           model,
           task,
           autoCommitted: partial.autoCommitted ?? false,
@@ -335,6 +341,7 @@ export class Knox {
           loopsRun: agentResult.loopsRun,
           maxLoops,
           startedAt,
+          difficulty,
           finishedAt,
           durationMs,
           model,

@@ -47,14 +47,14 @@ Do thing B
     async () => {
       const { dir } = await setup({
         "a.md": "Do thing A",
-        "_defaults.yaml": "model: opus\nmaxLoops: 5\n",
+        "_defaults.yaml": "difficulty: complex\nmaxLoops: 5\n",
       });
       try {
         const source = new DirectoryQueueSource(dir);
         const result = await source.load();
         assertEquals(result.ok, true);
         if (result.ok) {
-          assertEquals(result.manifest.defaults!.model, "opus");
+          assertEquals(result.manifest.defaults!.difficulty, "complex");
           assertEquals(result.manifest.defaults!.maxLoops, 5);
         }
       } finally {
@@ -87,7 +87,7 @@ Do thing B
       "_skipped.md": "Should be skipped",
       "notes.txt": "Not a task file",
       "queue.yaml": "items: []",
-      "_defaults.yaml": "model: sonnet\n",
+      "_defaults.yaml": "difficulty: balanced\n",
     });
     try {
       const source = new DirectoryQueueSource(dir);

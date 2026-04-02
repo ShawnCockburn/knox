@@ -1,7 +1,7 @@
 concurrency: 3
 
 defaults:
-  model: sonnet
+  difficulty: balanced
   check: "deno check src/**/*.ts"
   maxLoops: 3
 

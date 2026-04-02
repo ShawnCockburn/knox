@@ -56,10 +56,10 @@ knox run --task "Fix the legacy service" \
   --image python:3.12-slim \
   --prepare "pip install flask"
 
-# Custom model and resource limits
+# Difficulty and resource limits
 knox run --task "Refactor auth middleware to use JWT" \
   --dir ./my-project \
-  --model opus \
+  --difficulty complex \
   --cpu 4 \
   --memory 8g
 
@@ -76,7 +76,7 @@ knox run --task "Update API client" \
 | ------------------ | --------------- | ---------------------------------------------------------------------------------------------------- |
 | `--task`           | _(required)_    | Task description for the agent                                                                       |
 | `--dir`            | `.`             | Source directory to work on                                                                          |
-| `--model`          | `sonnet`        | Claude model to use                                                                                  |
+| `--difficulty`     | `balanced`      | Portable model tier: `complex`, `balanced`, or `easy`                                                |
 | `--features`       | —               | Features to install (e.g., `python:3.12,deno`) — see [Container Environment](#container-environment) |
 | `--prepare`        | —               | Prepare command run with network access (e.g., `pip install flask`)                                  |
 | `--image`          | —               | Custom Docker image (mutually exclusive with `--features`)                                           |
@@ -164,7 +164,7 @@ Replace all `throw new Error(...)` calls with the typed error classes defined in
 `src/errors/`. Update catch blocks in middleware to match.
 ```
 
-Frontmatter fields: `dependsOn`, `model`, `features`, `prepare`, `image`,
+Frontmatter fields: `dependsOn`, `difficulty`, `features`, `prepare`, `image`,
 `check`, `group`, `maxLoops`, `env`, `cpu`, `memory`. Files prefixed with `_`
 are skipped (reserved for config).
 
@@ -173,7 +173,7 @@ YAML manifest `defaults` key:
 
 ```yaml
 # _defaults.yaml
-model: sonnet
+difficulty: balanced
 features:
   - node:22
 prepare: "npm install"
@@ -192,7 +192,7 @@ same frontmatter + Markdown format as directory-based tasks:
 
 ```markdown
 ---
-model: opus
+difficulty: complex
 features:
   - python:3.12
 prepare: "pip install -r requirements.txt"
@@ -222,7 +222,7 @@ Queue-level defaults for the GitHub source are configured in
 # .knox/config.yaml
 github:
   defaults:
-    model: sonnet
+    difficulty: balanced
     features:
       - node:22
     prepare: "npm install"
@@ -309,7 +309,7 @@ file:
 concurrency: 2
 
 defaults:
-  model: sonnet
+  difficulty: balanced
   features:
     - node:22
   prepare: "npm install"
@@ -393,7 +393,7 @@ github: # GitHub Issues source config
     - alice
     - bob
   defaults: # queue-level defaults for GitHub Issues (same shape as _defaults.yaml)
-    model: sonnet
+    difficulty: balanced
     features:
       - node:22
     prepare: "npm install"

@@ -1,4 +1,5 @@
 import type { KnoxOutcome } from "../engine/knox.ts";
+import type { Difficulty } from "../difficulty/mod.ts";
 
 /** Status of a queue item throughout its lifecycle. */
 export type ItemStatus =
@@ -24,7 +25,7 @@ export interface QueueItem extends EnvironmentConfig {
   readonly task: string;
   readonly group?: string;
   readonly dependsOn?: string[];
-  readonly model?: string;
+  readonly difficulty?: Difficulty;
   readonly check?: string;
   readonly maxLoops?: number;
   readonly env?: string[];
@@ -36,7 +37,7 @@ export interface QueueItem extends EnvironmentConfig {
 
 /** Queue-level defaults that merge with per-item overrides. */
 export interface QueueDefaults extends EnvironmentConfig {
-  readonly model?: string;
+  readonly difficulty?: Difficulty;
   readonly check?: string;
   readonly maxLoops?: number;
   readonly env?: string[];

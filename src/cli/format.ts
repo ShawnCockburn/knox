@@ -27,7 +27,7 @@ export function formatSummary(result: KnoxResult): string {
     `[knox] Summary`,
     `  Status:      ${status}`,
     `  Duration:    ${formatDuration(result.durationMs)}`,
-    `  Model:       ${result.model}`,
+    `  Model:       ${result.model} (${result.difficulty})`,
   ];
 
   // Strategy-specific fields

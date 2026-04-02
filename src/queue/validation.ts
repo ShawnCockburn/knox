@@ -1,4 +1,8 @@
 import type { QueueItem, QueueManifest, ValidationError } from "./types.ts";
+import { isDifficulty } from "../difficulty/mod.ts";
+
+const LEGACY_MODEL_MESSAGE =
+  "The 'model' field has been replaced by 'difficulty'. Use one of: complex, balanced, easy.";
 
 /** Validate environment fields (features, envSetup, image). */
 function validateEnvironmentFields(
@@ -54,6 +58,22 @@ export function validateManifest(
   // Validate defaults environment fields
   if (raw.defaults) {
     validateEnvironmentFields(raw.defaults, "defaults", errors);
+    if (raw.defaults.model !== undefined) {
+      errors.push({
+        field: "model",
+        message: `defaults: ${LEGACY_MODEL_MESSAGE}`,
+      });
+    }
+    if (
+      raw.defaults.difficulty !== undefined &&
+      !isDifficulty(raw.defaults.difficulty)
+    ) {
+      errors.push({
+        field: "difficulty",
+        message:
+          `defaults: 'difficulty' must be one of: complex, balanced, easy`,
+      });
+    }
   }
 
   // Validate each item structurally
@@ -126,12 +146,29 @@ export function validateManifest(
       item.id,
     );
 
+    if (item.model !== undefined) {
+      errors.push({
+        itemId: item.id,
+        field: "model",
+        message: `Item '${item.id}': ${LEGACY_MODEL_MESSAGE}`,
+      });
+    }
+
+    if (item.difficulty !== undefined && !isDifficulty(item.difficulty)) {
+      errors.push({
+        itemId: item.id,
+        field: "difficulty",
+        message:
+          `Item '${item.id}': 'difficulty' must be one of: complex, balanced, easy`,
+      });
+    }
+
     items.push({
       id: item.id,
       task: item.task,
       group: item.group,
       dependsOn: item.dependsOn,
-      model: item.model,
+      difficulty: item.difficulty,
       features: item.features,
       envSetup: item.envSetup,
       image: item.image,

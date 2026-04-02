@@ -1,5 +1,10 @@
 import type { KnoxEngineOptions, KnoxOutcome } from "../engine/knox.ts";
 import { Knox } from "../engine/knox.ts";
+import {
+  claudeCodeDifficultyMap,
+  createDifficultyResolver,
+} from "../difficulty/mod.ts";
+import type { Difficulty, ResolveDifficulty } from "../difficulty/mod.ts";
 import { generateRunId } from "../shared/types.ts";
 import type { KnoxEvent, RunId } from "../shared/types.ts";
 import { log } from "../shared/log.ts";
@@ -26,6 +31,8 @@ export interface OrchestratorOptions {
   image: string;
   /** Resolves per-item environment config to a Docker image. */
   imageResolver?: ImageResolver;
+  /** Resolves a difficulty enum to a concrete provider model. */
+  resolveDifficulty?: ResolveDifficulty;
   envVars: string[];
   allowedIPs: string[];
   dir: string;
@@ -281,7 +288,11 @@ export class Orchestrator {
     log.info(`[${item.id}] Starting...`);
 
     // Merge defaults + item overrides
-    const model = item.model ?? defaults.model ?? "sonnet";
+    const difficulty: Difficulty = item.difficulty ?? defaults.difficulty ??
+      "balanced";
+    const resolveDifficulty = this.options.resolveDifficulty ??
+      createDifficultyResolver(claudeCodeDifficultyMap);
+    const model = resolveDifficulty(difficulty);
     const maxLoops = item.maxLoops ?? defaults.maxLoops ?? 10;
     const check = item.check ?? defaults.check;
     const cpu = item.cpu ?? defaults.cpu;
@@ -358,6 +369,7 @@ export class Orchestrator {
       envVars: [...this.options.envVars, ...env],
       allowedIPs: this.options.allowedIPs,
       runId,
+      difficulty,
       model,
       maxLoops,
       customPrompt,

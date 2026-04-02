@@ -1,4 +1,5 @@
 import { basename } from "@std/path";
+import type { ResolveDifficulty } from "../difficulty/mod.ts";
 import type { ContainerRuntime } from "../shared/runtime/container_runtime.ts";
 import { log } from "../shared/log.ts";
 import { DirectoryQueueSource } from "./directory_queue_source.ts";
@@ -21,6 +22,8 @@ export interface MultiQueueRunnerOptions {
   envVars: string[];
   /** Allowed outbound IPs for containers. */
   allowedIPs: string[];
+  /** Resolves a difficulty enum to a concrete provider model. */
+  resolveDifficulty: ResolveDifficulty;
   /** Project source directory. */
   dir: string;
   signal?: AbortSignal;
@@ -97,6 +100,7 @@ export class MultiQueueRunner {
         imageResolver: this.options.imageResolver,
         envVars: this.options.envVars,
         allowedIPs: this.options.allowedIPs,
+        resolveDifficulty: this.options.resolveDifficulty,
         dir: this.options.dir,
         logDir,
         signal,

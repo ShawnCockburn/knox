@@ -13,6 +13,7 @@ function makeResult(overrides: Partial<KnoxResult> = {}): KnoxResult {
     startedAt: "2026-03-22T10:00:00.000Z",
     finishedAt: "2026-03-22T10:04:32.000Z",
     durationMs: 272000,
+    difficulty: "balanced",
     model: "sonnet",
     task: "Add MIT license",
     autoCommitted: false,
@@ -50,7 +51,7 @@ Deno.test("formatSummary", async (t) => {
     const output = formatSummary(makeResult());
     assertStringIncludes(output, "completed (3/10 loops)");
     assertStringIncludes(output, "4m 32s");
-    assertStringIncludes(output, "sonnet");
+    assertStringIncludes(output, "sonnet (balanced)");
     assertStringIncludes(output, "knox/add-mit-licence-a3f2b1c0");
     assertStringIncludes(output, "Commits:     2");
     assertStringIncludes(output, "Auto-commit: no");

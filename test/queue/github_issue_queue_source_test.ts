@@ -180,7 +180,7 @@ Deno.test("GitHubIssueQueueSource — parses frontmatter from issue body", async
         number: 5,
         title: "Configured task",
         body: `---
-model: opus
+difficulty: complex
 maxLoops: 3
 ---
 Build with specific config`,
@@ -197,7 +197,7 @@ Build with specific config`,
     const result = await source.load();
     assertEquals(result.ok, true);
     if (result.ok) {
-      assertEquals(result.manifest.items[0].model, "opus");
+      assertEquals(result.manifest.items[0].difficulty, "complex");
       assertEquals(result.manifest.items[0].maxLoops, 3);
       assertEquals(result.manifest.items[0].task, "Build with specific config");
     }
@@ -214,14 +214,14 @@ Deno.test("GitHubIssueQueueSource — applies queue-level defaults", async () =>
     const source = new GitHubIssueQueueSource({
       cwd: "/repo",
       statePath,
-      defaults: { model: "opus", maxLoops: 20 },
+      defaults: { difficulty: "complex", maxLoops: 20 },
       runner,
     });
 
     const result = await source.load();
     assertEquals(result.ok, true);
     if (result.ok) {
-      assertEquals(result.manifest.defaults?.model, "opus");
+      assertEquals(result.manifest.defaults?.difficulty, "complex");
       assertEquals(result.manifest.defaults?.maxLoops, 20);
     }
   });

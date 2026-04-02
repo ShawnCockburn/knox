@@ -104,6 +104,34 @@ Deno.test("CLI", async (t) => {
     },
   );
 
+  await t.step(
+    "knox run exits with code 2 for invalid --difficulty",
+    async () => {
+      const cmd = new Deno.Command("deno", {
+        args: [
+          "run",
+          "--allow-read",
+          "--allow-env",
+          CLI_PATH,
+          "run",
+          "--task",
+          "test",
+          "--difficulty",
+          "hard",
+        ],
+        stdout: "piped",
+        stderr: "piped",
+      });
+      const result = await cmd.output();
+      assertEquals(result.code, 2);
+      const stderr = new TextDecoder().decode(result.stderr);
+      assertStringIncludes(
+        stderr,
+        "--difficulty must be one of: complex, balanced, easy",
+      );
+    },
+  );
+
   // ── queue --file mode ────────────────────────────────────────────────────
 
   await t.step(
