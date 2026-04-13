@@ -31,11 +31,17 @@
 | **Difficulty Map** (new)    | A fully-keyed mapped type `{ [K in Difficulty]: string }` that maps every Difficulty level to a concrete model string; enforced complete at compile time         | Model map, model config                                 |
 | **Resolve Difficulty** (new)| A function type `(difficulty: Difficulty) => string` injected into the Orchestrator and CLI; the sole contract for turning Difficulty into a concrete model string | Model resolver, difficulty resolver, model mapper       |
 
+## Project Tooling (new)
+
+| Term                    | Definition                                                                         | Aliases to avoid      |
+| ----------------------- | ---------------------------------------------------------------------------------- | --------------------- |
+| **Deno Runtime** (new)  | The host-side runtime and task runner Knox uses for development and CLI execution | Node, Node runtime    |
+
 ## Agent & Task
 
 | Term                  | Definition                                                                                       | Aliases to avoid                             |
 | --------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------- |
-| **Agent**             | The Claude Code instance running autonomously inside the Container                               | Bot, worker, runner                          |
+| **Agent** (updated)   | A coding agent instance running autonomously inside the Container to complete a Task             | Bot, worker, runner                          |
 | **Task**              | A user-provided description of work for the Agent to complete                                    | Job, prompt (when meaning the user's intent) |
 | **Task Slug**         | A URL-safe transformation of the Task description, used for branch names                         | Task ID, task key                            |
 | **Loop**              | A single invocation of Claude Code inside the Container; the Agent may run across multiple Loops | Iteration, cycle, round                      |
@@ -57,6 +63,17 @@
 | **Claude Code Agent Provider** | Agent Provider implementation for Claude Code; owns the Claude CLI path, sentinel detection, prompt building via PromptBuilder, and progress/git-log reading    | Claude provider, CC provider                                |
 | **Shell Provider** (new)       | Container Provider implementation for shell commands; runs `sh -c <command>` via `execStream`, streams output through `onLine`, maps exit code to Invoke Result | Command provider, exec provider                             |
 | **Shell Executor** (new)       | Orchestration counterpart to Agent Runner for shell jobs; invokes a Container Provider exactly once — no loop, no retry, no Check Command, no Commit Nudge      | Shell runner, command runner (ambiguous with queue concept) |
+
+## Architecture Boundaries (new)
+
+| Term                              | Definition                                                                                          | Aliases to avoid              |
+| --------------------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------- |
+| **Core Logic** (new)              | The Knox application logic that coordinates runs and queues without depending directly on vendor implementations | Business logic, app core      |
+| **Port** (new)                    | An interface owned by Core Logic that defines a required capability boundary                        | Interface, abstraction        |
+| **Adapter** (new)                 | A concrete implementation of a Port for a specific technology or vendor                             | Integration, provider         |
+| **External System** (new)         | A dependency outside Core Logic, such as Docker, GitHub, or an LLM platform                         | Infra, backend service        |
+| **LLM Provider** (new)            | The external model platform an Agent Provider uses to execute inference                              | Model provider, AI vendor     |
+| **Provider-Agnostic Design** (new) | The architecture rule that Core Logic depends on Ports and injected capabilities rather than concrete Adapters | Vendor-neutral design, pluggability |
 
 ## Run Identity
 
@@ -228,12 +245,19 @@
 - A **Container Provider** is the generic root; **Agent Provider** and **Shell
   Provider** are sibling branches beneath it, each with their own context type
   (updated)
+- **Core Logic** owns **Port** definitions; **Adapter** implementations bind
+  them to specific **External System**s (new)
+- **Provider-Agnostic Design** means the **Orchestrator**, **Agent Runner**,
+  and surrounding **Core Logic** depend on **Port**s and injected functions,
+  not concrete **Adapter**s (new)
 - An **Agent Runner** takes an **Agent Provider** and a **Container Handle** and
   produces an **AgentRunnerResult** (completed, loopsRun, autoCommitted)
   (updated)
 - An **Agent Runner** is provider-agnostic — it delegates per-loop execution to
   the **Agent Provider** via `invoke()` and uses the **Container Handle** only
   for Check Commands, dirty-tree checks, and Auto-Commit (updated)
+- An **Agent Provider** is an **Adapter** that satisfies the **Port** Knox uses
+  to run an **Agent** against an **LLM Provider** (new)
 - A **Shell Executor** takes a **Container Provider** (scoped to **Shell
   Context**) and a **Container Handle**, invokes the provider exactly once, and
   returns the **Invoke Result** unchanged (new)
@@ -360,7 +384,7 @@
   for **GitHub Issue Queue Source**, identical in shape to `_defaults.yaml` for
   **Directory Queue Source** (new)
 
-## Example dialogue (updated — Env Setup / Project Setup split)
+## Example dialogue (updated — architecture boundaries)
 
 > **Dev:** "How do I set up the environment for my tasks? I need Python and
 > Deno." **Domain expert:** "Declare **Features** in your queue. In
@@ -445,6 +469,17 @@
 > `knox/blocked` — on first use. It never touches the **agent/knox Label** —
 > that's yours to add and remove. When a task completes, Knox closes the issue
 > and removes `knox/claimed`."
+>
+> **Dev:** "Knox runs Claude Code today, but I want the architecture to stay
+> open to Codex or another tool later. What term should we use?" **Domain
+> expert:** "Use **Agent** for the autonomous coding worker and **Agent
+> Provider** for the **Adapter** that binds Knox to a concrete **LLM
+> Provider**. The **Core Logic** stays under **Provider-Agnostic Design** and
+> depends on **Ports**, not vendor APIs."
+>
+> **Dev:** "Where does Docker fit in that model?" **Domain expert:** "Docker is
+> an **External System** behind the **Container Runtime** port. Keep Docker
+> details in adapters and keep orchestration terms focused on Knox concepts."
 
 ## Flagged ambiguities
 
@@ -572,6 +607,13 @@
   Registry). Never use "provider" unqualified — always say the full term. In
   particular, **Shell Provider** is a **Container Provider**, not an **Agent
   Provider** — the two are siblings, not parent-child.
+- **"agent"** (new): Use **Agent** for the autonomous coding worker inside the
+  **Container**. Use **Agent Provider** for the adapter contract Knox invokes,
+  and use concrete names such as **Claude Code Agent Provider** only when the
+  implementation detail matters.
+- **"runtime"** (new): Can mean the host-side **Deno Runtime** that runs Knox
+  itself or a language runtime installed in the **Container** via a **Feature**.
+  Always qualify which runtime you mean.
 - **"handle" vs "session"** (new): A **Container Handle** is a narrow,
   provider-facing interface (`exec`, `execStream`, `copyIn`). A **Container
   Session** is the full lifecycle manager (creation, network restriction, bundle
