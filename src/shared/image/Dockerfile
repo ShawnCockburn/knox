@@ -20,6 +20,11 @@ RUN mkdir -p ${CLAUDE_HOME} \
     && printf '#!/bin/sh\nexec /opt/claude/bin/node /opt/claude/lib/node_modules/@anthropic-ai/claude-code/cli.js "$@"\n' > ${CLAUDE_HOME}/bin/claude \
     && chmod +x ${CLAUDE_HOME}/bin/claude
 
+# Install Codex CLI into /opt/codex/ (isolated from user PATH)
+ENV CODEX_HOME=/opt/codex
+RUN mkdir -p ${CODEX_HOME} \
+    && ${CLAUDE_HOME}/bin/npm install -g --prefix ${CODEX_HOME} @openai/codex
+
 RUN useradd -m -s /bin/bash knox \
     && git config --global user.email "knox@localhost" \
     && git config --global user.name "Knox Agent"

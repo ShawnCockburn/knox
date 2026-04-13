@@ -6,12 +6,20 @@ import knoxAddTaskSkill from "../../../.agents/skills/knox-add-task/SKILL.md" wi
 };
 import { join } from "@std/path";
 import { ensureDir } from "@std/fs";
+import { parse as parseYaml, stringify as stringifyYaml } from "@std/yaml";
+import { isProviderId } from "../../provider/provider_id.ts";
+import type { ProviderId } from "../../provider/provider_id.ts";
 
 const GITIGNORE_BLOCK = "\n# Knox\n.knox/*\n!.knox/config.yaml\n";
 
-export async function runInit(): Promise<void> {
+export interface RunInitOptions {
+  provider?: string;
+}
+
+export async function runInit(options: RunInitOptions = {}): Promise<void> {
   const repoRoot = await findGitRoot();
   await initKnoxDir(repoRoot);
+  await writeProjectConfig(repoRoot, options.provider);
   await installSkills(repoRoot);
   await updateGitignore(repoRoot);
 }
@@ -38,6 +46,67 @@ async function initKnoxDir(repoRoot: string): Promise<void> {
   if (!existed) {
     console.log("created  .knox/");
   }
+}
+
+async function writeProjectConfig(
+  repoRoot: string,
+  cliProvider?: string,
+): Promise<void> {
+  const provider = await resolvePreferredProvider(cliProvider);
+  const configPath = join(repoRoot, ".knox", "config.yaml");
+  let config: Record<string, unknown> = {};
+  let existed = false;
+
+  try {
+    const text = await Deno.readTextFile(configPath);
+    const parsed = parseYaml(text);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      config = parsed as Record<string, unknown>;
+    }
+    existed = true;
+  } catch (error) {
+    if (!(error instanceof Deno.errors.NotFound)) {
+      throw error;
+    }
+  }
+
+  config.provider = provider;
+  await Deno.writeTextFile(configPath, stringifyYaml(config));
+  console.log(
+    `${(existed ? "updated" : "created").padEnd(8)} .knox/config.yaml`,
+  );
+}
+
+async function resolvePreferredProvider(
+  cliProvider?: string,
+): Promise<ProviderId> {
+  if (cliProvider !== undefined) {
+    if (!isProviderId(cliProvider)) {
+      console.error(
+        `Error: --provider must be one of: claude, codex. Got '${cliProvider}'.`,
+      );
+      Deno.exit(2);
+    }
+    return cliProvider;
+  }
+
+  const answer = prompt("Preferred Knox provider (claude/codex)?", "claude");
+  if (!answer) {
+    console.error(
+      "Error: provider selection is required. Re-run with --provider claude|codex.",
+    );
+    Deno.exit(2);
+  }
+
+  const provider = answer.trim().toLowerCase();
+  if (!isProviderId(provider)) {
+    console.error(
+      `Error: provider must be one of: claude, codex. Got '${answer}'.`,
+    );
+    Deno.exit(2);
+  }
+
+  return provider;
 }
 
 async function installSkills(repoRoot: string): Promise<void> {

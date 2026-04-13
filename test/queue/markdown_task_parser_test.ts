@@ -109,6 +109,25 @@ Do the thing.
     }
   });
 
+  await t.step("provider frontmatter produces execution-level warning", () => {
+    const content = `---
+provider: codex
+---
+
+Do the thing.
+`;
+    const result = parseMarkdownTask(content, "provider-field.md");
+    assertEquals(result?.ok, true);
+    if (result?.ok) {
+      assertEquals(
+        result.warnings?.some((w) =>
+          w.message.includes("execution-level only")
+        ),
+        true,
+      );
+    }
+  });
+
   await t.step("filename-to-id derivation strips .md extension", () => {
     const result = parseMarkdownTask("Do this.", "implement-oauth.md");
     assertEquals(result?.ok, true);
@@ -211,7 +230,10 @@ Do this.
     const result = parseMarkdownTask(content, "task.md");
     assertEquals(result?.ok, false);
     if (result && !result.ok) {
-      assertStringIncludes(result.errors[0].message, "replaced by 'difficulty'");
+      assertStringIncludes(
+        result.errors[0].message,
+        "replaced by 'difficulty'",
+      );
     }
   });
 });

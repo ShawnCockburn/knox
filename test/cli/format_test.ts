@@ -13,6 +13,7 @@ function makeResult(overrides: Partial<KnoxResult> = {}): KnoxResult {
     startedAt: "2026-03-22T10:00:00.000Z",
     finishedAt: "2026-03-22T10:04:32.000Z",
     durationMs: 272000,
+    provider: "claude",
     difficulty: "balanced",
     model: "sonnet",
     task: "Add MIT license",

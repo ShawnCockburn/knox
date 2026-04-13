@@ -11,6 +11,7 @@ import type {
 } from "../../src/engine/sink/result_sink.ts";
 import { SinkStrategy } from "../../src/engine/sink/result_sink.ts";
 import type { KnoxEvent } from "../../src/shared/types.ts";
+import { createFakeExecutionContext } from "../fake_execution.ts";
 
 class MockSourceProvider implements SourceProvider {
   prepare(_runId: string): Promise<PrepareResult> {
@@ -60,11 +61,14 @@ function makeOptions(
   signal?: AbortSignal,
 ): KnoxEngineOptions {
   return {
+    execution: createFakeExecutionContext({
+      envVars: ["ANTHROPIC_API_KEY=test"],
+      allowedIPs: ["1.2.3.4"],
+    }),
     task: "test task",
     dir: "/tmp/test-dir",
     image: "knox-agent:latest",
     envVars: ["ANTHROPIC_API_KEY=test"],
-    allowedIPs: ["1.2.3.4"],
     maxLoops: 3,
     model: "sonnet",
     signal,

@@ -1,6 +1,10 @@
 import { parse as parseYaml, stringify as stringifyYaml } from "@std/yaml";
 import { parseMarkdownTask } from "./markdown_task_parser.ts";
-import { validateManifest } from "./validation.ts";
+import {
+  collectExecutionLevelProviderWarnings,
+  validateManifest,
+} from "./validation.ts";
+import { log } from "../shared/log.ts";
 import type {
   ItemState,
   LoadResult,
@@ -86,6 +90,10 @@ export class DirectoryQueueSource implements QueueSource {
         continue;
       }
 
+      for (const warning of result.warnings ?? []) {
+        log.warn(`${filename}: ${warning.message}`);
+      }
+
       rawItems.push(result.item);
     }
 
@@ -118,6 +126,9 @@ export class DirectoryQueueSource implements QueueSource {
       items: rawItems,
       ...(defaults !== undefined && { defaults }),
     };
+    for (const warning of collectExecutionLevelProviderWarnings(rawManifest)) {
+      log.warn(warning.message);
+    }
 
     const result = validateManifest(rawManifest);
 

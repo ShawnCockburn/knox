@@ -1,6 +1,6 @@
 import { log } from "../log.ts";
 
-const API_HOSTS = [
+export const CLAUDE_REQUIRED_HOSTS = [
   "api.anthropic.com",
   "statsigapi.net",
   "http-intake.logs.us5.datadoghq.com",
@@ -12,11 +12,13 @@ const API_HOSTS = [
  * Returns the list of allowed IPs for network restriction.
  * Throws if zero IPs can be resolved.
  */
-export async function resolveAllowedIPs(): Promise<string[]> {
+export async function resolveAllowedIPsForHosts(
+  hosts: readonly string[],
+): Promise<string[]> {
   log.info(`Resolving API endpoints...`);
   const ips = new Set<string>();
 
-  for (const host of API_HOSTS) {
+  for (const host of hosts) {
     try {
       const records = await Deno.resolveDns(host, "A");
       for (const ip of records) ips.add(ip);
@@ -36,7 +38,7 @@ export async function resolveAllowedIPs(): Promise<string[]> {
 
   if (ips.size === 0) {
     throw new Error(
-      "Failed to resolve Anthropic API IPs — cannot set up network restriction",
+      `Failed to resolve provider API IPs for hosts: ${hosts.join(", ")}`,
     );
   }
 

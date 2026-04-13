@@ -22,6 +22,8 @@ const REMOVED_FIELDS: Record<string, string> = {
   model:
     "The 'model' field has been replaced by 'difficulty'. Use one of: complex, balanced, easy.",
 };
+const EXECUTION_LEVEL_PROVIDER_MESSAGE =
+  "The 'provider' field is ignored here. Provider is execution-level only; set it in .knox/config.yaml or pass --provider on the command line.";
 
 /** Result type for parseMarkdownTask. */
 export type ParseResult =
@@ -94,6 +96,11 @@ export function parseMarkdownTask(
   for (const key of Object.keys(fm)) {
     if (key in REMOVED_FIELDS) {
       errors.push({ field: key, message: REMOVED_FIELDS[key] });
+    } else if (key === "provider") {
+      warnings.push({
+        field: key,
+        message: EXECUTION_LEVEL_PROVIDER_MESSAGE,
+      });
     } else if (!KNOWN_FIELDS.has(key)) {
       warnings.push({
         field: key,

@@ -132,6 +132,30 @@ Deno.test("CLI", async (t) => {
     },
   );
 
+  await t.step(
+    "knox run requires an explicit provider when none is configured",
+    async () => {
+      const cmd = new Deno.Command("deno", {
+        args: [
+          "run",
+          "--allow-read",
+          "--allow-env",
+          CLI_PATH,
+          "run",
+          "--task",
+          "test",
+          "--skip-preflight",
+        ],
+        stdout: "piped",
+        stderr: "piped",
+      });
+      const result = await cmd.output();
+      assertEquals(result.code, 3);
+      const stderr = new TextDecoder().decode(result.stderr);
+      assertStringIncludes(stderr, "No provider configured");
+    },
+  );
+
   // ── queue --file mode ────────────────────────────────────────────────────
 
   await t.step(
@@ -165,6 +189,8 @@ Deno.test("CLI", async (t) => {
           "--allow-env",
           CLI_PATH,
           "queue",
+          "--provider",
+          "claude",
           "--source",
           "directory",
           "--file",
@@ -193,6 +219,8 @@ Deno.test("CLI", async (t) => {
           "--allow-env",
           CLI_PATH,
           "queue",
+          "--provider",
+          "claude",
           "--source",
           "directory",
         ],
@@ -229,6 +257,8 @@ Deno.test("CLI", async (t) => {
             "--allow-env",
             CLI_PATH,
             "queue",
+            "--provider",
+            "claude",
             "--source",
             "directory",
           ],
@@ -268,6 +298,8 @@ Deno.test("CLI", async (t) => {
           "--allow-env",
           CLI_PATH,
           "queue",
+          "--provider",
+          "claude",
           "--source",
           "directory",
           "--name",
@@ -303,6 +335,8 @@ Deno.test("CLI", async (t) => {
             "--allow-env",
             CLI_PATH,
             "queue",
+            "--provider",
+            "claude",
             "--source",
             "directory",
             "--name",
@@ -340,6 +374,8 @@ Deno.test("CLI", async (t) => {
           "--allow-env",
           CLI_PATH,
           "queue",
+          "--provider",
+          "claude",
           "--source",
           "directory",
           "--output",
@@ -392,7 +428,7 @@ Deno.test("CLI", async (t) => {
         await Deno.mkdir(`${tmpDir}/.knox`, { recursive: true });
         await Deno.writeTextFile(
           `${tmpDir}/.knox/config.yaml`,
-          `output: pr\n`,
+          `provider: claude\noutput: pr\n`,
         );
         // No queues — should fail with "no queues found" not a config error
         const cmd = new Deno.Command("deno", {

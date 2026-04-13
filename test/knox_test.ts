@@ -7,6 +7,7 @@ import type { PrepareResult } from "../src/engine/source/source_provider.ts";
 import type { ResultSink, SinkResult } from "../src/engine/sink/result_sink.ts";
 import type { CollectOptions } from "../src/engine/sink/result_sink.ts";
 import { SinkStrategy } from "../src/engine/sink/result_sink.ts";
+import { createFakeExecutionContext } from "./fake_execution.ts";
 
 class MockSourceProvider implements SourceProvider {
   prepareCalled = false;
@@ -88,11 +89,14 @@ function engineOpts(
   overrides: Record<string, unknown> = {},
 ) {
   return {
+    execution: createFakeExecutionContext({
+      envVars: ["ANTHROPIC_API_KEY=test-key"],
+      allowedIPs: ["1.2.3.4"],
+    }),
     task: "Test task",
     dir: Deno.cwd(),
     image: "knox-agent:latest",
     envVars: ["ANTHROPIC_API_KEY=test-key"],
-    allowedIPs: ["1.2.3.4"],
     maxLoops: 1,
     model: "sonnet",
     runtime,

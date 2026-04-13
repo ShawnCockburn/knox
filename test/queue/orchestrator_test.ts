@@ -13,6 +13,7 @@ import type {
   QueueSource,
   QueueState,
 } from "../../src/queue/types.ts";
+import { createFakeExecutionContext } from "../fake_execution.ts";
 
 /** Mock engine that returns configurable outcomes per item. */
 function mockEngineFactory(
@@ -37,6 +38,7 @@ function mockEngineFactory(
               startedAt: new Date().toISOString(),
               finishedAt: new Date().toISOString(),
               durationMs: 100,
+              provider: "claude",
               difficulty: opts.difficulty ?? "balanced",
               model: opts.model ?? "sonnet",
               task: opts.task,
@@ -100,6 +102,11 @@ async function cleanup(dir: string) {
   await Deno.remove(dir, { recursive: true }).catch(() => {});
 }
 
+const defaultExecution = createFakeExecutionContext({
+  envVars: ["ANTHROPIC_API_KEY=test"],
+  allowedIPs: ["1.2.3.4"],
+});
+
 Deno.test("Orchestrator", async (t) => {
   await t.step("runs items serially and produces report", async () => {
     const logDir = await setupLogDir();
@@ -114,9 +121,8 @@ Deno.test("Orchestrator", async (t) => {
       const engineCalls: KnoxEngineOptions[] = [];
       const orchestrator = new Orchestrator({
         source,
+        execution: defaultExecution,
         image: "knox-agent:latest",
-        envVars: ["ANTHROPIC_API_KEY=test"],
-        allowedIPs: ["1.2.3.4"],
         dir: Deno.cwd(),
         logDir,
         engineFactory: mockEngineFactory(new Map(), engineCalls),
@@ -153,9 +159,8 @@ Deno.test("Orchestrator", async (t) => {
 
       const orchestrator = new Orchestrator({
         source,
+        execution: defaultExecution,
         image: "knox-agent:latest",
-        envVars: [],
-        allowedIPs: [],
         dir: Deno.cwd(),
         logDir,
         engineFactory: mockEngineFactory(new Map()),
@@ -193,9 +198,8 @@ Deno.test("Orchestrator", async (t) => {
 
       const orchestrator = new Orchestrator({
         source,
+        execution: defaultExecution,
         image: "knox-agent:latest",
-        envVars: [],
-        allowedIPs: [],
         dir: Deno.cwd(),
         logDir,
         engineFactory: mockEngineFactory(outcomes),
@@ -222,9 +226,8 @@ Deno.test("Orchestrator", async (t) => {
 
       const orchestrator = new Orchestrator({
         source,
+        execution: defaultExecution,
         image: "knox-agent:latest",
-        envVars: [],
-        allowedIPs: [],
         dir: Deno.cwd(),
         logDir,
         engineFactory: mockEngineFactory(new Map()),
@@ -254,9 +257,10 @@ Deno.test("Orchestrator", async (t) => {
       const engineCalls: KnoxEngineOptions[] = [];
       const orchestrator = new Orchestrator({
         source,
+        execution: createFakeExecutionContext({
+          envVars: ["GLOBAL=true"],
+        }),
         image: "knox-agent:latest",
-        envVars: ["GLOBAL=true"],
-        allowedIPs: [],
         dir: Deno.cwd(),
         logDir,
         engineFactory: mockEngineFactory(new Map(), engineCalls),
@@ -267,7 +271,7 @@ Deno.test("Orchestrator", async (t) => {
       // Item A: model overridden, env merged
       assertEquals(engineCalls[0].model, "haiku");
       assertEquals(engineCalls[0].maxLoops, 5); // from defaults
-      assert(engineCalls[0].envVars.includes("GLOBAL=true"));
+      assert(engineCalls[0].execution.envVars.includes("GLOBAL=true"));
       assert(engineCalls[0].envVars.includes("DEFAULT=true"));
       assert(engineCalls[0].envVars.includes("ITEM=yes"));
 
@@ -290,9 +294,8 @@ Deno.test("Orchestrator", async (t) => {
 
         const orchestrator = new Orchestrator({
           source,
+          execution: defaultExecution,
           image: "knox-agent:latest",
-          envVars: [],
-          allowedIPs: [],
           dir: Deno.cwd(),
           logDir,
           engineFactory: mockEngineFactory(new Map()),
@@ -324,9 +327,8 @@ Deno.test("Orchestrator", async (t) => {
 
       const orchestrator = new Orchestrator({
         source,
+        execution: defaultExecution,
         image: "knox-agent:latest",
-        envVars: [],
-        allowedIPs: [],
         dir: Deno.cwd(),
         logDir,
         engineFactory: mockEngineFactory(new Map()),
@@ -364,9 +366,8 @@ Deno.test("Orchestrator", async (t) => {
       const engineCalls: KnoxEngineOptions[] = [];
       const orchestrator = new Orchestrator({
         source,
+        execution: defaultExecution,
         image: "knox-agent:latest",
-        envVars: [],
-        allowedIPs: [],
         dir: Deno.cwd(),
         logDir,
         engineFactory: mockEngineFactory(new Map(), engineCalls),
@@ -407,9 +408,8 @@ Deno.test("Orchestrator", async (t) => {
 
       const orchestrator = new Orchestrator({
         source,
+        execution: defaultExecution,
         image: "knox-agent:latest",
-        envVars: [],
-        allowedIPs: [],
         dir: Deno.cwd(),
         logDir,
         engineFactory: mockEngineFactory(outcomes),
@@ -449,9 +449,8 @@ Deno.test("Orchestrator", async (t) => {
 
       const orchestrator = new Orchestrator({
         source,
+        execution: defaultExecution,
         image: "knox-agent:latest",
-        envVars: [],
-        allowedIPs: [],
         dir: Deno.cwd(),
         logDir,
         engineFactory: mockEngineFactory(outcomes),
@@ -490,9 +489,8 @@ Deno.test("Orchestrator", async (t) => {
 
       const orchestrator = new Orchestrator({
         source,
+        execution: defaultExecution,
         image: "knox-agent:latest",
-        envVars: [],
-        allowedIPs: [],
         dir: Deno.cwd(),
         logDir,
         engineFactory: mockEngineFactory(outcomes),
@@ -534,6 +532,7 @@ Deno.test("Orchestrator", async (t) => {
               startedAt: new Date().toISOString(),
               finishedAt: new Date().toISOString(),
               durationMs: 50,
+              provider: "claude",
               difficulty: "balanced",
               model: "sonnet",
               task: opts.task,
@@ -561,9 +560,8 @@ Deno.test("Orchestrator", async (t) => {
 
       const orchestrator = new Orchestrator({
         source,
+        execution: defaultExecution,
         image: "knox-agent:latest",
-        envVars: [],
-        allowedIPs: [],
         dir: Deno.cwd(),
         logDir,
         engineFactory,
@@ -599,6 +597,7 @@ Deno.test("Orchestrator", async (t) => {
                 startedAt: new Date().toISOString(),
                 finishedAt: new Date().toISOString(),
                 durationMs: 10,
+                provider: "claude",
                 difficulty: "balanced",
                 model: "sonnet",
                 task: opts.task,
@@ -625,9 +624,8 @@ Deno.test("Orchestrator", async (t) => {
 
         const orchestrator = new Orchestrator({
           source,
+          execution: defaultExecution,
           image: "knox-agent:latest",
-          envVars: [],
-          allowedIPs: [],
           dir: Deno.cwd(),
           logDir,
           engineFactory,
@@ -665,6 +663,7 @@ Deno.test("Orchestrator", async (t) => {
                 startedAt: new Date().toISOString(),
                 finishedAt: new Date().toISOString(),
                 durationMs: 10,
+                provider: "claude",
                 difficulty: "balanced",
                 model: "sonnet",
                 task: opts.task,
@@ -692,9 +691,8 @@ Deno.test("Orchestrator", async (t) => {
 
       const orchestrator = new Orchestrator({
         source,
+        execution: defaultExecution,
         image: "knox-agent:latest",
-        envVars: [],
-        allowedIPs: [],
         dir: Deno.cwd(),
         logDir,
         engineFactory,
@@ -727,9 +725,8 @@ Deno.test("Orchestrator", async (t) => {
 
       const orchestrator = new Orchestrator({
         source,
+        execution: defaultExecution,
         image: "knox-agent:latest",
-        envVars: [],
-        allowedIPs: [],
         dir: Deno.cwd(),
         logDir,
         engineFactory: mockEngineFactory(new Map()),
@@ -764,6 +761,7 @@ Deno.test("Orchestrator", async (t) => {
                 startedAt: new Date().toISOString(),
                 finishedAt: new Date().toISOString(),
                 durationMs: 10,
+                provider: "claude",
                 difficulty: "balanced",
                 model: "sonnet",
                 task: opts.task,
@@ -791,9 +789,8 @@ Deno.test("Orchestrator", async (t) => {
 
       const orchestrator = new Orchestrator({
         source,
+        execution: defaultExecution,
         image: "knox-agent:latest",
-        envVars: [],
-        allowedIPs: [],
         dir: Deno.cwd(),
         logDir,
         engineFactory,
@@ -834,9 +831,8 @@ Deno.test("Orchestrator", async (t) => {
 
         const orchestrator = new Orchestrator({
           source,
+          execution: defaultExecution,
           image: "knox-agent:latest",
-          envVars: [],
-          allowedIPs: [],
           dir: Deno.cwd(),
           logDir,
           engineFactory: mockEngineFactory(outcomes),
@@ -885,9 +881,8 @@ Deno.test("Orchestrator", async (t) => {
       const engineCalls: KnoxEngineOptions[] = [];
       const orchestrator = new Orchestrator({
         source,
+        execution: defaultExecution,
         image: "knox-agent:latest",
-        envVars: [],
-        allowedIPs: [],
         dir: Deno.cwd(),
         logDir,
         resume: true,
@@ -937,9 +932,8 @@ Deno.test("Orchestrator", async (t) => {
       const engineCalls: KnoxEngineOptions[] = [];
       const orchestrator = new Orchestrator({
         source,
+        execution: defaultExecution,
         image: "knox-agent:latest",
-        envVars: [],
-        allowedIPs: [],
         dir: Deno.cwd(),
         logDir,
         resume: true,
@@ -983,9 +977,8 @@ Deno.test("Orchestrator", async (t) => {
       const engineCalls: KnoxEngineOptions[] = [];
       const orchestrator = new Orchestrator({
         source,
+        execution: defaultExecution,
         image: "knox-agent:latest",
-        envVars: [],
-        allowedIPs: [],
         dir: Deno.cwd(),
         logDir,
         // No resume flag
@@ -1029,6 +1022,7 @@ Deno.test("Orchestrator", async (t) => {
               startedAt: new Date().toISOString(),
               finishedAt: new Date().toISOString(),
               durationMs: 100,
+              provider: "claude",
               difficulty: opts.difficulty ?? "balanced",
               model: "sonnet",
               task: opts.task,
@@ -1054,9 +1048,8 @@ Deno.test("Orchestrator", async (t) => {
 
       const orchestrator = new Orchestrator({
         source,
+        execution: defaultExecution,
         image: "knox-agent:latest",
-        envVars: [],
-        allowedIPs: [],
         dir: Deno.cwd(),
         logDir,
         engineFactory,
@@ -1105,6 +1098,7 @@ Deno.test("Orchestrator", async (t) => {
               startedAt: new Date().toISOString(),
               finishedAt: new Date().toISOString(),
               durationMs: 10,
+              provider: "claude",
               difficulty: "balanced",
               model: "sonnet",
               task: opts.task,
@@ -1131,9 +1125,8 @@ Deno.test("Orchestrator", async (t) => {
 
       const orchestrator = new Orchestrator({
         source,
+        execution: defaultExecution,
         image: "knox-agent:latest",
-        envVars: [],
-        allowedIPs: [],
         dir: Deno.cwd(),
         logDir,
         signal: controller.signal,

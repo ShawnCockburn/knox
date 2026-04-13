@@ -13,7 +13,7 @@ export type {
   LlmAgentContext,
   ShellContext,
 } from "./agent/mod.ts";
-export { ClaudeCodeAgentProvider } from "./agent/mod.ts";
+export { ClaudeCodeAgentProvider, CodexAgentProvider } from "./agent/mod.ts";
 export { AgentRunner } from "./agent/mod.ts";
 export type { AgentRunnerOptions, AgentRunnerResult } from "./agent/mod.ts";
 export { ShellProvider } from "./agent/mod.ts";

@@ -2,7 +2,10 @@ import { parse as parseYaml, stringify as stringifyYaml } from "@std/yaml";
 import type { CommandRunner } from "./output/pr_queue_output.ts";
 import { GitHubClient } from "./github_client.ts";
 import { mapIssueToQueueItem } from "./issue_mapper.ts";
-import { validateManifest } from "./validation.ts";
+import {
+  collectExecutionLevelProviderWarnings,
+  validateManifest,
+} from "./validation.ts";
 import { log } from "../shared/log.ts";
 import type {
   ItemState,
@@ -162,6 +165,9 @@ export class GitHubIssueQueueSource implements QueueSource {
       items,
       ...(this.defaults !== undefined && { defaults: this.defaults }),
     };
+    for (const warning of collectExecutionLevelProviderWarnings(rawManifest)) {
+      log.warn(warning.message);
+    }
 
     const validationResult = validateManifest(rawManifest);
 

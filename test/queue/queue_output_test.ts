@@ -15,6 +15,7 @@ import type {
   QueueSource,
   QueueState,
 } from "../../src/queue/types.ts";
+import { createFakeExecutionContext } from "../fake_execution.ts";
 
 // --- Helpers ---
 
@@ -60,6 +61,7 @@ function mockEngineFactory() {
           startedAt: new Date().toISOString(),
           finishedAt: new Date().toISOString(),
           durationMs: 10,
+          provider: "claude",
           difficulty: opts.difficulty ?? "balanced",
           model: opts.model ?? "sonnet",
           task: opts.task,
@@ -76,6 +78,8 @@ function mockEngineFactory() {
     },
   });
 }
+
+const defaultExecution = createFakeExecutionContext();
 
 async function setupLogDir(): Promise<string> {
   return await Deno.makeTempDir({ prefix: "knox-queue-output-test-" });
@@ -134,9 +138,8 @@ Deno.test("Orchestrator + queueOutput", async (t) => {
 
       const orchestrator = new Orchestrator({
         source,
+        execution: defaultExecution,
         image: "knox-agent:latest",
-        envVars: [],
-        allowedIPs: [],
         dir: Deno.cwd(),
         logDir,
         engineFactory: mockEngineFactory(),
@@ -175,9 +178,8 @@ Deno.test("Orchestrator + queueOutput", async (t) => {
 
         const orchestrator = new Orchestrator({
           source,
+          execution: defaultExecution,
           image: "knox-agent:latest",
-          envVars: [],
-          allowedIPs: [],
           dir: Deno.cwd(),
           logDir,
           engineFactory: mockEngineFactory(),
@@ -222,9 +224,8 @@ Deno.test("Orchestrator + queueOutput", async (t) => {
 
         const orchestrator = new Orchestrator({
           source,
+          execution: defaultExecution,
           image: "knox-agent:latest",
-          envVars: [],
-          allowedIPs: [],
           dir: Deno.cwd(),
           logDir,
           engineFactory: mockEngineFactory(),
@@ -265,9 +266,8 @@ Deno.test("Orchestrator + queueOutput", async (t) => {
 
       const orchestrator = new Orchestrator({
         source,
+        execution: defaultExecution,
         image: "knox-agent:latest",
-        envVars: [],
-        allowedIPs: [],
         dir: Deno.cwd(),
         logDir,
         engineFactory: mockEngineFactory(),

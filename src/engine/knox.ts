@@ -1,7 +1,6 @@
 import type { ContainerRuntime } from "../shared/runtime/container_runtime.ts";
 import { DockerRuntime } from "../shared/runtime/docker_runtime.ts";
 import { AgentRunner } from "./agent/agent_runner.ts";
-import { ClaudeCodeAgentProvider } from "./agent/claude_code_agent_provider.ts";
 import { ContainerSession } from "./session/container_session.ts";
 import { generateRunId, taskSlug } from "../shared/types.ts";
 import type {
@@ -17,13 +16,14 @@ import { SinkStrategy } from "./sink/result_sink.ts";
 import { GitBranchSink } from "./sink/git_branch_sink.ts";
 import { log } from "../shared/log.ts";
 import type { Difficulty } from "../difficulty/mod.ts";
+import type { ProviderId, ResolvedExecutionContext } from "../provider/mod.ts";
 
 export interface KnoxEngineOptions {
+  execution: ResolvedExecutionContext;
   task: string;
   dir: string;
   image: ImageId;
   envVars: string[];
-  allowedIPs: string[];
   runId?: RunId;
   maxLoops?: number;
   difficulty?: Difficulty;
@@ -52,6 +52,7 @@ export interface KnoxResult {
   startedAt: string;
   finishedAt: string;
   durationMs: number;
+  provider: ProviderId;
   difficulty: Difficulty;
   model: string;
   task: string;
@@ -88,7 +89,6 @@ export class Knox {
       dir,
       image,
       envVars,
-      allowedIPs,
       maxLoops = 10,
       model = "sonnet",
       difficulty = "balanced",
@@ -101,17 +101,18 @@ export class Knox {
       onEvent,
       signal,
     } = this.options;
+    const execution = this.options.execution;
 
     const emit = (event: KnoxEvent) => onEvent?.(event);
 
     log.debug(
-      `[knox] Starting run ${runId}: image=${image} model=${model} maxLoops=${maxLoops}`,
+      `[knox] Starting run ${runId}: provider=${execution.provider} image=${image} model=${model} maxLoops=${maxLoops}`,
     );
     log.debug(`[knox] dir=${dir} runDir=${runDir}`);
     log.debug(
       `[knox] envVars: ${envVars.map((e) => e.split("=")[0]).join(", ")}`,
     );
-    log.debug(`[knox] allowedIPs: ${allowedIPs.join(", ")}`);
+    log.debug(`[knox] allowedIPs: ${execution.allowedIPs.join(", ")}`);
     log.debug(`[knox] task: ${task.slice(0, 200)}`);
 
     // Create run temp directory
@@ -129,6 +130,7 @@ export class Knox {
     const partial: Partial<KnoxResult> = {
       runId,
       task,
+      provider: execution.provider,
       difficulty,
       model,
       maxLoops,
@@ -152,6 +154,7 @@ export class Knox {
           startedAt,
           finishedAt,
           durationMs,
+          provider: execution.provider,
           difficulty,
           model,
           task,
@@ -180,8 +183,8 @@ export class Knox {
           runId,
           runDir,
           image,
-          envVars,
-          allowedIPs,
+          envVars: [...execution.envVars, ...envVars],
+          allowedIPs: execution.allowedIPs,
           sourceProvider,
           cpuLimit,
           memoryLimit,
@@ -222,8 +225,11 @@ export class Knox {
       };
       try {
         log.info(`Starting agent loop (max ${maxLoops} loops)...`);
-        const provider = new ClaudeCodeAgentProvider(model);
         const containerHandle = session.toContainerHandle();
+        const provider = await execution.prepareAgentProvider(
+          containerHandle,
+          model,
+        );
         const agentRunner = new AgentRunner({
           provider,
           container: containerHandle,
@@ -341,6 +347,7 @@ export class Knox {
           loopsRun: agentResult.loopsRun,
           maxLoops,
           startedAt,
+          provider: execution.provider,
           difficulty,
           finishedAt,
           durationMs,

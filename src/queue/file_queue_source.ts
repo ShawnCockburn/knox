@@ -1,5 +1,9 @@
 import { parse as parseYaml, stringify as stringifyYaml } from "@std/yaml";
-import { validateManifest } from "./validation.ts";
+import {
+  collectExecutionLevelProviderWarnings,
+  validateManifest,
+} from "./validation.ts";
+import { log } from "../shared/log.ts";
 import type {
   ItemState,
   LoadResult,
@@ -24,6 +28,9 @@ export class FileQueueSource implements QueueSource {
   async load(): Promise<LoadResult> {
     const text = await Deno.readTextFile(this.filePath);
     const raw = parseYaml(text);
+    for (const warning of collectExecutionLevelProviderWarnings(raw)) {
+      log.warn(warning.message);
+    }
     const result = validateManifest(raw);
 
     if (result.errors.length > 0) {

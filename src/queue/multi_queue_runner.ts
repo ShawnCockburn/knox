@@ -1,7 +1,7 @@
 import { basename } from "@std/path";
-import type { ResolveDifficulty } from "../difficulty/mod.ts";
 import type { ContainerRuntime } from "../shared/runtime/container_runtime.ts";
 import { log } from "../shared/log.ts";
+import type { ResolvedExecutionContext } from "../provider/mod.ts";
 import { DirectoryQueueSource } from "./directory_queue_source.ts";
 import { Orchestrator } from "./orchestrator.ts";
 import type { ImageResolver, QueueReport } from "./orchestrator.ts";
@@ -12,18 +12,13 @@ import { QueueTUI } from "./tui/queue_tui.ts";
 
 /** Options for running multiple queues sequentially. */
 export interface MultiQueueRunnerOptions {
+  execution: ResolvedExecutionContext;
   /** Absolute paths to queue directories (each must contain queue.yaml). */
   queueDirs: string[];
   /** Pre-resolved container image. */
   image: string;
   /** Resolves per-item environment config to a Docker image. */
   imageResolver?: ImageResolver;
-  /** Resolved environment variables (auth + user-supplied). */
-  envVars: string[];
-  /** Allowed outbound IPs for containers. */
-  allowedIPs: string[];
-  /** Resolves a difficulty enum to a concrete provider model. */
-  resolveDifficulty: ResolveDifficulty;
   /** Project source directory. */
   dir: string;
   signal?: AbortSignal;
@@ -96,11 +91,9 @@ export class MultiQueueRunner {
 
       const orchestrator = new Orchestrator({
         source,
+        execution: this.options.execution,
         image: this.options.image,
         imageResolver: this.options.imageResolver,
-        envVars: this.options.envVars,
-        allowedIPs: this.options.allowedIPs,
-        resolveDifficulty: this.options.resolveDifficulty,
         dir: this.options.dir,
         logDir,
         signal,

@@ -15,7 +15,7 @@ export type {
   LlmAgentContext,
   ShellContext,
 } from "./engine/mod.ts";
-export { ClaudeCodeAgentProvider } from "./engine/mod.ts";
+export { ClaudeCodeAgentProvider, CodexAgentProvider } from "./engine/mod.ts";
 export { AgentRunner } from "./engine/mod.ts";
 export type { AgentRunnerOptions, AgentRunnerResult } from "./engine/mod.ts";
 export { ShellProvider } from "./engine/mod.ts";
@@ -75,13 +75,14 @@ export type {
 } from "./shared/mod.ts";
 export { generateRunId, taskSlug } from "./shared/mod.ts";
 export { resolveAuth } from "./shared/mod.ts";
-export { resolveAllowedIPs } from "./shared/mod.ts";
+export { CLAUDE_REQUIRED_HOSTS, resolveAllowedIPsForHosts } from "./shared/mod.ts";
 export { resolveConfig } from "./shared/mod.ts";
 export type { KnoxProjectConfig, ResolvedConfig } from "./shared/mod.ts";
 
 // Difficulty
 export {
   claudeCodeDifficultyMap,
+  codexDifficultyMap,
   createDifficultyResolver,
   DIFFICULTIES,
   isDifficulty,
@@ -92,6 +93,21 @@ export type {
   DifficultyMap,
   ResolveDifficulty,
 } from "./difficulty/mod.ts";
+
+// Provider
+export {
+  BUILTIN_PROVIDER_IDS,
+  isProviderId,
+  ProviderRegistry,
+  resolveCodexHostAuth,
+  resolveExecutionContext,
+} from "./provider/mod.ts";
+export type {
+  CodexHostAuth,
+  ProviderId,
+  ProviderSpec,
+  ResolvedExecutionContext,
+} from "./provider/mod.ts";
 
 // Queue output
 export type {

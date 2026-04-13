@@ -10,6 +10,7 @@ import type {
   OrchestratorOptions,
   QueueReport,
 } from "../../src/queue/orchestrator.ts";
+import { createFakeExecutionContext } from "../fake_execution.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -42,6 +43,8 @@ function fakeReport(
 function fakeQueue(name: string, path = `/tmp/${name}`): DiscoveredQueue {
   return { name, path };
 }
+
+const defaultExecution = createFakeExecutionContext();
 
 // ---------------------------------------------------------------------------
 // discoverQueues
@@ -195,9 +198,8 @@ Deno.test("runMultiQueue - runs queues sequentially (verify order via callbacks)
 
   await runMultiQueue({
     queues,
+    execution: defaultExecution,
     image: "test",
-    envVars: [],
-    allowedIPs: [],
     dir: "/tmp",
     onQueueStart: (name) => order.push(`start:${name}`),
     onQueueComplete: (name) => order.push(`done:${name}`),
@@ -224,9 +226,8 @@ Deno.test("runMultiQueue - combined report includes all queues", async () => {
 
   const report = await runMultiQueue({
     queues,
+    execution: defaultExecution,
     image: "test",
-    envVars: [],
-    allowedIPs: [],
     dir: "/tmp",
     _orchestratorFactory: (_opts: OrchestratorOptions) => ({
       run: (): Promise<QueueReport> => Promise.resolve(fakeReport("task")),
@@ -250,9 +251,8 @@ Deno.test("runMultiQueue - abort mid-queue skips remaining queues", async () => 
 
   await runMultiQueue({
     queues,
+    execution: defaultExecution,
     image: "test",
-    envVars: [],
-    allowedIPs: [],
     dir: "/tmp",
     signal: controller.signal,
     onQueueStart: (name) => started.push(name),
@@ -275,9 +275,8 @@ Deno.test("runMultiQueue - calls queueOutput.deliver() for each completed queue"
 
   await runMultiQueue({
     queues,
+    execution: defaultExecution,
     image: "test",
-    envVars: [],
-    allowedIPs: [],
     dir: "/tmp",
     queueOutput: {
       deliver: (name: string) => {

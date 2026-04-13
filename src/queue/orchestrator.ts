@@ -1,13 +1,10 @@
 import type { KnoxEngineOptions, KnoxOutcome } from "../engine/knox.ts";
 import { Knox } from "../engine/knox.ts";
-import {
-  claudeCodeDifficultyMap,
-  createDifficultyResolver,
-} from "../difficulty/mod.ts";
-import type { Difficulty, ResolveDifficulty } from "../difficulty/mod.ts";
+import type { Difficulty } from "../difficulty/mod.ts";
 import { generateRunId } from "../shared/types.ts";
 import type { KnoxEvent, RunId } from "../shared/types.ts";
 import { log } from "../shared/log.ts";
+import type { ProviderId, ResolvedExecutionContext } from "../provider/mod.ts";
 import type {
   EnvironmentConfig,
   QueueItem,
@@ -27,14 +24,11 @@ export type ImageResolver = (env: EnvironmentConfig) => Promise<string>;
 /** Options for running the queue orchestrator. */
 export interface OrchestratorOptions {
   source: QueueSource;
+  execution: ResolvedExecutionContext;
   /** Pre-resolved default image (used when item has no environment config). */
   image: string;
   /** Resolves per-item environment config to a Docker image. */
   imageResolver?: ImageResolver;
-  /** Resolves a difficulty enum to a concrete provider model. */
-  resolveDifficulty?: ResolveDifficulty;
-  envVars: string[];
-  allowedIPs: string[];
   dir: string;
   /** Per-item log directory. */
   logDir: string;
@@ -75,6 +69,7 @@ export interface QueueReport {
 export interface QueueReportItem {
   id: string;
   status: string;
+  provider?: ProviderId;
   branch?: string;
   durationMs?: number;
   outcome?: KnoxOutcome;
@@ -83,9 +78,11 @@ export interface QueueReportItem {
 
 export class Orchestrator {
   private readonly options: OrchestratorOptions;
+  private readonly execution: ResolvedExecutionContext;
 
   constructor(options: OrchestratorOptions) {
     this.options = options;
+    this.execution = options.execution;
   }
 
   async run(): Promise<QueueReport> {
@@ -131,6 +128,7 @@ export class Orchestrator {
       }
 
       log.info(`Resuming queue run ${queueRunId}`);
+      this.warnOnMixedProviders(manifest, state);
     } else {
       // Fresh run
       if (existingState && !this.options.resume) {
@@ -290,9 +288,7 @@ export class Orchestrator {
     // Merge defaults + item overrides
     const difficulty: Difficulty = item.difficulty ?? defaults.difficulty ??
       "balanced";
-    const resolveDifficulty = this.options.resolveDifficulty ??
-      createDifficultyResolver(claudeCodeDifficultyMap);
-    const model = resolveDifficulty(difficulty);
+    const model = this.execution.resolveModel(difficulty);
     const maxLoops = item.maxLoops ?? defaults.maxLoops ?? 10;
     const check = item.check ?? defaults.check;
     const cpu = item.cpu ?? defaults.cpu;
@@ -363,11 +359,11 @@ export class Orchestrator {
 
     // Build engine options
     const engineOpts: KnoxEngineOptions = {
+      execution: this.execution,
       task: item.task,
       dir: this.options.dir,
       image: itemImage,
-      envVars: [...this.options.envVars, ...env],
-      allowedIPs: this.options.allowedIPs,
+      envVars: env,
       runId,
       difficulty,
       model,
@@ -413,6 +409,7 @@ export class Orchestrator {
         // Aborted: container was killed mid-execution
         state.items[item.id] = {
           status: "blocked",
+          provider: this.execution.provider,
           startedAt: itemStartedAt,
           finishedAt: itemFinishedAt,
           durationMs: itemDurationMs,
@@ -427,6 +424,7 @@ export class Orchestrator {
 
         state.items[item.id] = {
           status: "completed",
+          provider: this.execution.provider,
           startedAt: itemStartedAt,
           finishedAt: itemFinishedAt,
           durationMs: itemDurationMs,
@@ -449,6 +447,7 @@ export class Orchestrator {
         // Agent ran successfully but never signaled KNOX_COMPLETE
         state.items[item.id] = {
           status: "failed",
+          provider: this.execution.provider,
           startedAt: itemStartedAt,
           finishedAt: itemFinishedAt,
           durationMs: itemDurationMs,
@@ -463,6 +462,7 @@ export class Orchestrator {
       } else if (!outcome.ok) {
         state.items[item.id] = {
           status: "failed",
+          provider: this.execution.provider,
           startedAt: itemStartedAt,
           finishedAt: itemFinishedAt,
           durationMs: itemDurationMs,
@@ -487,6 +487,7 @@ export class Orchestrator {
 
       state.items[item.id] = {
         status: "failed",
+        provider: this.execution.provider,
         startedAt: itemStartedAt,
         finishedAt: itemFinishedAt,
         durationMs: itemDurationMs,
@@ -521,6 +522,26 @@ export class Orchestrator {
         this.options.onItemBlocked?.(item.id, failedId);
         // Recursively block their dependents
         this.blockDependents(item.id, manifest, state);
+      }
+    }
+  }
+
+  private warnOnMixedProviders(
+    manifest: QueueManifest,
+    state: QueueState,
+  ): void {
+    for (const item of manifest.items) {
+      const outcome = state.items[item.id]?.outcome;
+      const recordedProvider = state.items[item.id]?.provider ??
+        (outcome && outcome.ok ? outcome.result.provider : undefined);
+      if (
+        state.items[item.id]?.status === "completed" &&
+        recordedProvider &&
+        recordedProvider !== this.execution.provider
+      ) {
+        log.warn(
+          `Queue resume is mixing providers: item '${item.id}' previously ran with '${recordedProvider}', current invocation uses '${this.execution.provider}'.`,
+        );
       }
     }
   }
@@ -572,6 +593,7 @@ export class Orchestrator {
         return {
           id: item.id,
           status: s.status,
+          provider: s.provider,
           branch: s.branch,
           durationMs: s.durationMs,
           outcome: s.outcome,

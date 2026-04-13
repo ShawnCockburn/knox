@@ -15,6 +15,7 @@ async function cleanup(dir: string) {
 Deno.test("KnoxConfig", async (t) => {
   await t.step("loads valid .knox/config.yaml", async () => {
     const dir = await setup(`
+provider: claude
 output: pr
 pr:
   draft: true
@@ -25,6 +26,7 @@ pr:
 `);
     try {
       const config = await resolveConfig({ dir, command: "queue" });
+      assertEquals(config.provider, "claude");
       assertEquals(config.output, "pr");
       assertEquals(config.pr.draft, true);
       assertEquals(config.pr.labels, ["my-label"]);
@@ -56,6 +58,20 @@ pr:
         cliOutput: "branch",
       });
       assertEquals(config.output, "branch");
+    } finally {
+      await cleanup(dir);
+    }
+  });
+
+  await t.step("CLI --provider flag overrides config file value", async () => {
+    const dir = await setup(`provider: claude`);
+    try {
+      const config = await resolveConfig({
+        dir,
+        command: "queue",
+        cliProvider: "codex",
+      });
+      assertEquals(config.provider, "codex");
     } finally {
       await cleanup(dir);
     }
@@ -114,4 +130,20 @@ pr:
       await cleanup(dir);
     }
   });
+
+  await t.step(
+    "invalid provider value in config produces a clear error",
+    async () => {
+      const dir = await setup(`provider: invalid`);
+      try {
+        await assertRejects(
+          () => resolveConfig({ dir, command: "queue" }),
+          Error,
+          "Invalid provider value in .knox/config.yaml",
+        );
+      } finally {
+        await cleanup(dir);
+      }
+    },
+  );
 });

@@ -1,5 +1,5 @@
 import { join } from "@std/path";
-import type { ResolveDifficulty } from "../difficulty/mod.ts";
+import type { ResolvedExecutionContext } from "../provider/mod.ts";
 import { DirectoryQueueSource } from "./directory_queue_source.ts";
 import { Orchestrator } from "./orchestrator.ts";
 import type { OrchestratorOptions, QueueReport } from "./orchestrator.ts";
@@ -66,10 +66,8 @@ export interface MultiQueueReport {
 /** Options for the multi-queue runner. */
 export interface MultiQueueRunnerOptions {
   queues: DiscoveredQueue[];
+  execution: ResolvedExecutionContext;
   image: string;
-  envVars: string[];
-  allowedIPs: string[];
-  resolveDifficulty: ResolveDifficulty;
   dir: string;
   signal?: AbortSignal;
   verbose?: boolean;
@@ -105,10 +103,8 @@ export async function runMultiQueue(
 
     const orchOpts: OrchestratorOptions = {
       source,
+      execution: options.execution,
       image: options.image,
-      envVars: options.envVars,
-      allowedIPs: options.allowedIPs,
-      resolveDifficulty: options.resolveDifficulty,
       dir: options.dir,
       logDir,
       signal: options.signal,

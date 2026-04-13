@@ -44,7 +44,7 @@ export { generateRunId, taskSlug } from "./types.ts";
 
 // Pre-container functions
 export { resolveAuth } from "./knox/mod.ts";
-export { resolveAllowedIPs } from "./knox/mod.ts";
+export { CLAUDE_REQUIRED_HOSTS, resolveAllowedIPsForHosts } from "./knox/mod.ts";
 export { resolveConfig } from "./knox/mod.ts";
 export type { KnoxProjectConfig, ResolvedConfig } from "./knox/mod.ts";
 

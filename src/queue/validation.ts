@@ -3,6 +3,8 @@ import { isDifficulty } from "../difficulty/mod.ts";
 
 const LEGACY_MODEL_MESSAGE =
   "The 'model' field has been replaced by 'difficulty'. Use one of: complex, balanced, easy.";
+const EXECUTION_LEVEL_PROVIDER_MESSAGE =
+  "The 'provider' field is ignored here. Provider is execution-level only; set it in .knox/config.yaml or pass --provider on the command line.";
 
 /** Validate environment fields (features, envSetup, image). */
 function validateEnvironmentFields(
@@ -21,6 +23,39 @@ function validateEnvironmentFields(
         `${context}: 'features' and 'image' cannot be used together. Use 'features' for Knox-managed runtimes, or 'image' for a custom Docker image.`,
     });
   }
+}
+
+export function collectExecutionLevelProviderWarnings(
+  // deno-lint-ignore no-explicit-any
+  raw: any,
+): ValidationError[] {
+  const warnings: ValidationError[] = [];
+
+  if (!raw || typeof raw !== "object") {
+    return warnings;
+  }
+
+  if (raw.defaults?.provider !== undefined) {
+    warnings.push({
+      field: "provider",
+      message: `defaults: ${EXECUTION_LEVEL_PROVIDER_MESSAGE}`,
+    });
+  }
+
+  if (Array.isArray(raw.items)) {
+    for (let i = 0; i < raw.items.length; i++) {
+      const item = raw.items[i];
+      if (item && typeof item === "object" && item.provider !== undefined) {
+        warnings.push({
+          itemId: typeof item.id === "string" ? item.id : undefined,
+          field: "provider",
+          message: `items[${i}]: ${EXECUTION_LEVEL_PROVIDER_MESSAGE}`,
+        });
+      }
+    }
+  }
+
+  return warnings;
 }
 
 /** Validate a raw parsed queue manifest and collect all errors. */
@@ -217,9 +252,25 @@ export function validateManifest(
     return { errors };
   }
 
+  const defaults = raw.defaults
+    ? {
+      difficulty: raw.defaults.difficulty,
+      check: raw.defaults.check,
+      maxLoops: raw.defaults.maxLoops,
+      env: raw.defaults.env,
+      prompt: raw.defaults.prompt,
+      cpu: raw.defaults.cpu,
+      memory: raw.defaults.memory,
+      projectSetup: raw.defaults.projectSetup,
+      features: raw.defaults.features,
+      envSetup: raw.defaults.envSetup,
+      image: raw.defaults.image,
+    }
+    : undefined;
+
   const manifest: QueueManifest = {
     items,
-    defaults: raw.defaults,
+    defaults,
     concurrency: raw.concurrency,
   };
 

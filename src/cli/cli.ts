@@ -8,8 +8,6 @@ import { PreflightChecker } from "../shared/preflight/preflight_checker.ts";
 import { ImageManager } from "../shared/image/image_manager.ts";
 import { FeatureRegistry } from "../shared/features/feature_registry.ts";
 import { DockerRuntime } from "../shared/runtime/docker_runtime.ts";
-import { resolveAuth } from "../shared/knox/resolve_auth.ts";
-import { resolveAllowedIPs } from "../shared/knox/resolve_network.ts";
 import { FileQueueSource } from "../queue/file_queue_source.ts";
 import {
   Orchestrator,
@@ -17,7 +15,6 @@ import {
 } from "../queue/orchestrator.ts";
 import { StaticRenderer } from "../queue/tui/static_renderer.ts";
 import { QueueTUI } from "../queue/tui/queue_tui.ts";
-import { resolveConfig } from "../queue/config.ts";
 import { DirectoryQueueSource } from "../queue/directory_queue_source.ts";
 import { discoverQueues } from "../queue/queue_discovery.ts";
 import {
@@ -28,11 +25,10 @@ import {
 import type { QueueOutput } from "../queue/output.ts";
 import { MultiQueueRunner } from "../queue/multi_queue_runner.ts";
 import type { QueueDefaults } from "../queue/types.ts";
-import {
-  claudeCodeDifficultyMap,
-  createDifficultyResolver,
-  isDifficulty,
-} from "../difficulty/mod.ts";
+import { isDifficulty } from "../difficulty/mod.ts";
+import { resolveConfig } from "../shared/knox/knox_config.ts";
+import { resolveExecutionContext } from "../provider/mod.ts";
+import type { ResolvedExecutionContext } from "../provider/mod.ts";
 
 /**
  * Resolve queue defaults environment config to a Docker image.
@@ -109,8 +105,6 @@ function createImageResolver(
   };
 }
 
-const resolveDifficulty = createDifficultyResolver(claudeCodeDifficultyMap);
-
 const USAGE = `Usage: knox <command> [options]
 
 Commands:
@@ -126,6 +120,7 @@ const RUN_USAGE = `Usage: knox run --task <task> [options]
 
 Options:
   --task <task>       Task description (required)
+  --provider <id>     Execution provider: claude or codex (overrides .knox/config.yaml)
   --dir <dir>         Source directory (default: .)
   --difficulty <level> Difficulty: complex, balanced, easy (default: balanced)
   --features <list>   Features to install (e.g., "python:3.12,deno")
@@ -152,10 +147,47 @@ Sources:
 Options:
   --file <path>       Queue YAML file (--source directory)
   --name <name>       Run a specific queue from .knox/queues/<name>/ (--source directory)
+  --provider <id>     Execution provider: claude or codex (overrides .knox/config.yaml)
   --output <strategy> Output strategy: "branch" or "pr" (overrides .knox/config.yaml)
   --resume            Resume from last checkpoint
   --verbose           Show debug-level messages
   --no-tui            Disable live TUI`;
+
+function requireProvider(provider: string | undefined): string {
+  if (provider) return provider;
+  throw new Error(
+    "No provider configured. Set `provider:` in .knox/config.yaml or pass `--provider claude|codex`.",
+  );
+}
+
+async function resolveCommandExecution(options: {
+  dir: string;
+  command: "run" | "queue";
+  cliOutput?: string;
+  cliProvider?: string;
+}): Promise<{
+  config: Awaited<ReturnType<typeof resolveConfig>>;
+  execution: ResolvedExecutionContext;
+}> {
+  const config = await resolveConfig(options);
+  const execution = await resolveExecutionContext({
+    provider: requireProvider(config.provider),
+  });
+  return { config, execution };
+}
+
+function createQueueOutput(
+  config: Awaited<ReturnType<typeof resolveConfig>>,
+  projectDir: string,
+): QueueOutput {
+  return config.output === "pr"
+    ? new PullRequestQueueOutput({
+      draft: config.pr?.draft,
+      base: config.pr?.base,
+      repoDir: projectDir,
+    })
+    : new BranchQueueOutput();
+}
 
 // Detect subcommand
 const subcommand = Deno.args[0];
@@ -167,10 +199,20 @@ const effectiveCommand = (!subcommand || isFlag) ? null : subcommand;
 const effectiveArgs = isFlag ? Deno.args : subcommandArgs;
 
 if (effectiveCommand === "init") {
-  await runInit();
+  const flags = parseArgs(effectiveArgs, {
+    string: ["provider"],
+    boolean: ["help"],
+  });
+
+  if (flags.help) {
+    console.error("Usage: knox init [--provider <claude|codex>]");
+    Deno.exit(0);
+  }
+
+  await runInit({ provider: flags.provider as string | undefined });
 } else if (effectiveCommand === "queue") {
   const flags = parseArgs(effectiveArgs, {
-    string: ["file", "name", "output", "source"],
+    string: ["file", "name", "output", "provider", "source"],
     boolean: ["resume", "verbose", "no-tui", "help"],
   });
 
@@ -203,20 +245,6 @@ if (effectiveCommand === "init") {
 
   const projectDir = resolve(".");
 
-  // Load project config and resolve effective output strategy
-  const config = await resolveConfig(projectDir);
-  const outputStrategy = (flags.output as string | undefined) ??
-    config.output ??
-    "branch";
-
-  const queueOutput: QueueOutput = outputStrategy === "pr"
-    ? new PullRequestQueueOutput({
-      draft: config.pr?.draft,
-      base: config.pr?.base,
-      repoDir: projectDir,
-    })
-    : new BranchQueueOutput();
-
   const isTTY = Deno.stderr.isTerminal();
   const isVerbose = flags.verbose as boolean;
   const useTUI = isTTY && !flags["no-tui"];
@@ -248,13 +276,18 @@ if (effectiveCommand === "init") {
         const manifest = loadResult.manifest;
 
         log.info("Resolving shared resources...");
+        const { config, execution } = await resolveCommandExecution({
+          dir: projectDir,
+          command: "queue",
+          cliOutput: flags.output as string | undefined,
+          cliProvider: flags.provider as string | undefined,
+        });
+        const queueOutput = createQueueOutput(config, projectDir);
         const imageManager = new ImageManager(runtime);
         const image = await resolveDefaultsImage(
           manifest.defaults,
           imageManager,
         );
-        const resolvedEnvVars = await resolveAuth([]);
-        const allowedIPs = await resolveAllowedIPs();
 
         const queueName = basename(queueFilePath).replace(/\.ya?ml$/, "");
         const logDir = resolve(dirname(queueFilePath), `${queueName}.logs`);
@@ -283,11 +316,9 @@ if (effectiveCommand === "init") {
 
         const orchestrator = new Orchestrator({
           source,
+          execution,
           image,
           imageResolver: createImageResolver(imageManager),
-          envVars: resolvedEnvVars,
-          allowedIPs,
-          resolveDifficulty,
           dir: projectDir,
           logDir,
           signal: controller.signal,
@@ -366,13 +397,18 @@ if (effectiveCommand === "init") {
         const manifest = loadResult.manifest;
 
         log.info("Resolving shared resources...");
+        const { config, execution } = await resolveCommandExecution({
+          dir: projectDir,
+          command: "queue",
+          cliOutput: flags.output as string | undefined,
+          cliProvider: flags.provider as string | undefined,
+        });
+        const queueOutput = createQueueOutput(config, projectDir);
         const imageManager = new ImageManager(runtime);
         const image = await resolveDefaultsImage(
           manifest.defaults,
           imageManager,
         );
-        const resolvedEnvVars = await resolveAuth([]);
-        const allowedIPs = await resolveAllowedIPs();
 
         const queueName = flags.name as string;
         const logDir = resolve(queueDir, ".logs");
@@ -399,11 +435,9 @@ if (effectiveCommand === "init") {
 
         const orchestrator = new Orchestrator({
           source,
+          execution,
           image,
           imageResolver: createImageResolver(imageManager),
-          envVars: resolvedEnvVars,
-          allowedIPs,
-          resolveDifficulty,
           dir: projectDir,
           logDir,
           signal: controller.signal,
@@ -463,10 +497,15 @@ if (effectiveCommand === "init") {
 
       const runtime = new DockerRuntime();
       log.info("Resolving shared resources...");
+      const { config, execution } = await resolveCommandExecution({
+        dir: projectDir,
+        command: "queue",
+        cliOutput: flags.output as string | undefined,
+        cliProvider: flags.provider as string | undefined,
+      });
+      const queueOutput = createQueueOutput(config, projectDir);
       const imageManager = new ImageManager(runtime);
       const image = await imageManager.ensureFeatureImage({});
-      const resolvedEnvVars = await resolveAuth([]);
-      const allowedIPs = await resolveAllowedIPs();
 
       const controller = new AbortController();
       Deno.addSignalListener("SIGINT", () => {
@@ -478,11 +517,9 @@ if (effectiveCommand === "init") {
 
       const runner = new MultiQueueRunner({
         queueDirs,
+        execution,
         image,
         imageResolver: createImageResolver(imageManager),
-        envVars: resolvedEnvVars,
-        allowedIPs,
-        resolveDifficulty,
         dir: projectDir,
         signal: controller.signal,
         resume: flags.resume as boolean,
@@ -518,6 +555,13 @@ if (effectiveCommand === "init") {
       "../queue/output/pr_queue_output.ts"
     );
 
+    const { config, execution } = await resolveCommandExecution({
+      dir: projectDir,
+      command: "queue",
+      cliOutput: flags.output as string | undefined,
+      cliProvider: flags.provider as string | undefined,
+    });
+    const queueOutput = createQueueOutput(config, projectDir);
     const statePath = resolve(projectDir, ".knox", "github.state.yaml");
     const githubDefaults = config.github?.defaults;
 
@@ -545,8 +589,6 @@ if (effectiveCommand === "init") {
       log.info("Resolving shared resources...");
       const imageManager = new ImageManager(runtime);
       const image = await resolveDefaultsImage(manifest.defaults, imageManager);
-      const resolvedEnvVars = await resolveAuth([]);
-      const allowedIPs = await resolveAllowedIPs();
 
       const queueName = "github";
       const logDir = resolve(projectDir, ".knox", "github.logs");
@@ -572,11 +614,9 @@ if (effectiveCommand === "init") {
 
       const orchestrator = new Orchestrator({
         source,
+        execution,
         image,
         imageResolver: createImageResolver(imageManager),
-        envVars: resolvedEnvVars,
-        allowedIPs,
-        resolveDifficulty,
         dir: projectDir,
         logDir,
         signal: controller.signal,
@@ -589,7 +629,8 @@ if (effectiveCommand === "init") {
         onItemRunning: (itemId) => renderer!.markItemRunning(itemId),
         onItemCompleted: (itemId, branch) =>
           renderer!.markItemCompleted(itemId, branch),
-        onItemFailed: (itemId, error) => renderer!.markItemFailed(itemId, error),
+        onItemFailed: (itemId, error) =>
+          renderer!.markItemFailed(itemId, error),
         onItemBlocked: (itemId, blockedBy) =>
           renderer!.markItemBlocked(itemId, blockedBy),
       });
@@ -630,6 +671,7 @@ if (effectiveCommand === "init") {
   const flags = parseArgs(effectiveArgs, {
     string: [
       "task",
+      "provider",
       "dir",
       "difficulty",
       "features",
@@ -700,13 +742,15 @@ if (effectiveCommand === "init") {
   const dir = resolve(flags.dir as string);
   const runtime = new DockerRuntime();
 
-  // Load project config and resolve effective output strategy
-  const config = await resolveConfig(dir);
-  const outputStrategy = (flags.output as string | undefined) ??
-    config.output ??
-    "branch";
-
   try {
+    const { config, execution } = await resolveCommandExecution({
+      dir,
+      command: "run",
+      cliOutput: flags.output as string | undefined,
+      cliProvider: flags.provider as string | undefined,
+    });
+    const outputStrategy = config.output;
+
     // Pre-container setup (CLI responsibility)
 
     // 1. Preflight checks
@@ -715,7 +759,7 @@ if (effectiveCommand === "init") {
       const preflightResult = await preflight.check({
         runtime,
         sourceDir: dir,
-        envVars,
+        envVars: [...execution.envVars, ...envVars],
       });
 
       for (const warning of preflightResult.warnings) {
@@ -764,13 +808,7 @@ if (effectiveCommand === "init") {
     }
     log.debug(`Image ready: ${image}`);
 
-    // 3. Resolve authentication
-    const resolvedEnvVars = await resolveAuth(envVars);
-
-    // 4. Resolve Anthropic API IPs for network restriction
-    const allowedIPs = await resolveAllowedIPs();
-
-    // 5. Load custom prompt
+    // 3. Load custom prompt
     let customPrompt: string | undefined;
     if (flags.prompt) {
       customPrompt = await Deno.readTextFile(flags.prompt as string);
@@ -785,13 +823,13 @@ if (effectiveCommand === "init") {
 
     // Run engine with fully resolved inputs
     const knox = new Knox({
+      execution,
       task: flags.task as string,
       dir,
       image,
-      envVars: resolvedEnvVars,
-      allowedIPs,
+      envVars,
       difficulty,
-      model: resolveDifficulty(difficulty),
+      model: execution.resolveModel(difficulty),
       maxLoops,
       customPrompt,
       check: flags.check as string | undefined,

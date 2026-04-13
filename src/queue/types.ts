@@ -1,5 +1,6 @@
 import type { KnoxOutcome } from "../engine/knox.ts";
 import type { Difficulty } from "../difficulty/mod.ts";
+import type { ProviderId } from "../provider/mod.ts";
 
 /** Status of a queue item throughout its lifecycle. */
 export type ItemStatus =
@@ -57,6 +58,7 @@ export interface QueueManifest {
 /** Per-item state persisted to the state file. */
 export interface ItemState {
   status: ItemStatus;
+  provider?: ProviderId;
   startedAt?: string;
   finishedAt?: string;
   durationMs?: number;

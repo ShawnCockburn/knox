@@ -12,6 +12,12 @@ export const claudeCodeDifficultyMap = {
   easy: "haiku",
 } satisfies DifficultyMap;
 
+export const codexDifficultyMap = {
+  complex: "gpt-5.4",
+  balanced: "gpt-5.4-mini",
+  easy: "gpt-5.4-mini",
+} satisfies DifficultyMap;
+
 export function isDifficulty(value: unknown): value is Difficulty {
   return typeof value === "string" &&
     (DIFFICULTIES as readonly string[]).includes(value);
